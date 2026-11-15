@@ -35,7 +35,7 @@ public sealed class KeyVaultCredentialProvider(DefaultAzureCredential credential
             throw new InvalidOperationException("CredentialSecretUri must point to /secrets/{secret-name}[/{version}].");
 
         var name = Uri.UnescapeDataString(segments[1]);
-        var version = segments.Length > 2 ? Uri.UnescapeDataString(segments[2]) : string.Empty;
+        string? version = segments.Length > 2 ? Uri.UnescapeDataString(segments[2]) : null;
         var client = new SecretClient(new Uri(secretUri.GetLeftPart(UriPartial.Authority)), credential);
         var response = await client.GetSecretAsync(name, version, cancellationToken);
         using var document = JsonDocument.Parse(response.Value.Value);
