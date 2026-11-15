@@ -20,6 +20,8 @@ interface Dashboard {
   vaultsCheckedLast7Days: number;
   dailyStatistics: Array<{ dateUtc: string; createdCount: number; createdCountExact: boolean; totalObjectCount: number; totalObjectCountExact: boolean }>;
 }
+interface DatabaseConfig { configured: boolean; provider: string; server?: string; database?: string; authentication?: string; encrypt?: string; message?: string; }
+interface DatabaseTest { success: boolean; code: string; message: string; explanation: string; server?: string; database?: string; technicalMessage?: string; }
 interface Incident {
   id: string; vaultId: string; vaultName: string; category: string;
   severity: string; status: string; title: string; description: string;
@@ -130,6 +132,25 @@ interface Incident {
         </section>
 
         <section class="panel">
+          <div class="panel-heading"><div><h2>Base de données du portail</h2><p class="muted small">SQL Server utilisé pour stocker les coffres, contrôles, statistiques, incidents et comptes du portail.</p></div><span class="count">{{ databaseConfig?.provider || 'SQL Server' }}</span></div>
+          <div class="db-config" *ngIf="databaseConfig">
+            <div><span class="sub">Serveur</span><strong>{{ databaseConfig.server || 'Non configuré' }}</strong></div>
+            <div><span class="sub">Base</span><strong>{{ databaseConfig.database || 'Non configurée' }}</strong></div>
+            <div><span class="sub">Authentification</span><strong>{{ databaseConfig.authentication || '—' }}</strong></div>
+            <div><span class="sub">Chiffrement</span><strong>{{ databaseConfig.encrypt || '—' }}</strong></div>
+          </div>
+          <p class="muted small" *ngIf="!databaseConfig?.configured">ConnectionStrings:DefaultConnection n'est pas configurée dans le backend.</p>
+          <div class="form-action"><button class="primary" (click)="testDatabase()" [disabled]="databaseBusy">Tester la connexion SQL</button></div>
+          <div class="db-result" *ngIf="databaseTest" [class.db-ok]="databaseTest.success" [class.db-error]="!databaseTest.success">
+            <strong>{{ databaseTest.message }}</strong>
+            <p>{{ databaseTest.explanation }}</p>
+            <small *ngIf="databaseTest.code">Code : {{ databaseTest.code }}</small>
+            <small *ngIf="databaseTest.server">Serveur : {{ databaseTest.server }} · Base : {{ databaseTest.database }}</small>
+            <small *ngIf="databaseTest.technicalMessage">Détail technique : {{ databaseTest.technicalMessage }}</small>
+          </div>
+        </section>
+
+        <section class="panel">
           <h2>Ajouter un coffre M-Files Cloud</h2>
           <p class="muted small">Les secrets ne sont jamais enregistrés en clair dans SQL. La référence doit pointer vers un secret Azure Key Vault contenant un JSON Credentials ou Token.</p>
           <form class="vault-form" (ngSubmit)="addVault()">
@@ -161,6 +182,7 @@ export class AppComponent implements OnInit {
   currentPassword = 'admin'; newPassword = ''; confirmPassword = '';
   busy = false; errorMessage = ''; vaults: Vault[] = [];
   dashboard: Dashboard | null = null; incidents: Incident[] = [];
+  databaseConfig: DatabaseConfig | null = null; databaseTest: DatabaseTest | null = null; databaseBusy = false;
   newVault = {
     name: '', vaultGuid: '', cloudHost: '', organization: '', environment: 'DEV',
     authenticationMode: 'None', credentialSecretUri: '', authenticationPlugin: '',
@@ -194,7 +216,9 @@ export class AppComponent implements OnInit {
       error: e => { this.errorMessage = e.error?.errors?.join(' ') || e.error?.message || 'Impossible de modifier le mot de passe.'; this.busy = false; }
     });
   }
-  refreshAll(): void { this.loadVaults(); this.loadDashboard(); this.loadIncidents(); }
+  refreshAll(): void { this.loadVaults(); this.loadDashboard(); this.loadIncidents(); this.loadDatabaseConfig(); }
+  loadDatabaseConfig(): void { this.http.get<DatabaseConfig>('/api/configuration/database', { withCredentials: true }).subscribe({ next: r => this.databaseConfig = r, error: () => this.errorMessage = 'Impossible de lire la configuration SQL.' }); }
+  testDatabase(): void { this.databaseBusy = true; this.databaseTest = null; this.http.post<DatabaseTest>('/api/configuration/database/test', {}, { headers: this.headers(), withCredentials: true }).subscribe({ next: r => { this.databaseTest = r; this.databaseBusy = false; this.loadDatabaseConfig(); }, error: e => { this.databaseTest = { success: false, code: 'API_ERROR', message: 'Le test SQL n’a pas pu être exécuté.', explanation: e.error?.message || 'Vérifie que le backend est démarré et que la session est valide.' }; this.databaseBusy = false; } }); }
   loadVaults(): void {
     this.http.get<Vault[]>('/api/vaults', { withCredentials: true }).subscribe({
       next: r => this.vaults = r,
