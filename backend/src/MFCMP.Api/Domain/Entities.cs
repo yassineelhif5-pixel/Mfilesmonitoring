@@ -32,5 +32,7 @@ public sealed class VaultHealthCheck
     public int? HttpStatusCode { get; set; }
     public long DurationMs { get; set; }
     public string AuthenticationStatus { get; set; } = "NOT_TESTED";
+    public string? ServerVersion { get; set; }
+    public string? CapabilitiesSummary { get; set; }
     public string Message { get; set; } = string.Empty;
 }

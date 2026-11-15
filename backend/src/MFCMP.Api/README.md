@@ -28,7 +28,9 @@ Then run:
 dotnet run
 ```
 
-The initial Development portal login is `admin / admin`. The first login must be followed by a password change. In non-Development environments, provide a strong one-time bootstrap password through Azure Key Vault or another secure secret provider.
+The initial Development portal login is `admin / admin`. The first login must be followed by a password change. In non-Development environments, provide a strong one-time bootstrap password through a secure secret provider.
 
-## Initial implementation boundary
-The current connection test calls MFWS `GET /REST/server/status`. A successful response proves endpoint reachability only; it does not validate credentials, vault-level access or gRPC. Those are separate implementation steps. The probe is read-only.
+## M-Files Cloud diagnostic
+The first connection test now uses the official `MFiles.Grpc` client to call the documented anonymous `QueryVersion` and `GetServerCapabilities` RPCs over TLS/HTTP2 on port 443. This proves the Cloud gRPC endpoint is reachable; it does not prove that the configured monitoring account can authenticate to the vault or has the required permissions. Those checks are the next connector step.
+
+The official .NET client package is versioned per M-Files Server release. The project currently references `MFiles.Grpc 26.11.0`; review the package/server compatibility when targeting another Cloud release.

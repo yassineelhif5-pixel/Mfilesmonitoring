@@ -20,8 +20,11 @@ public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe s
             {
                 v.Id, v.Name, v.VaultGuid, v.CloudHost, v.Organization, v.Environment, v.MonitoringEnabled,
                 LastHealthCheck = v.HealthChecks.OrderByDescending(h => h.CheckedAtUtc)
-                    .Select(h => new { h.CheckedAtUtc, h.Status, h.DurationMs, h.AuthenticationStatus, h.Message })
-                    .FirstOrDefault()
+                    .Select(h => new
+                    {
+                        h.CheckedAtUtc, h.Status, h.DurationMs, h.AuthenticationStatus,
+                        h.ServerVersion, h.CapabilitiesSummary, h.Message
+                    }).FirstOrDefault()
             }).ToListAsync(ct);
         return Ok(vaults);
     }
@@ -62,8 +65,8 @@ public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe s
         await db.SaveChangesAsync(ct);
         return Ok(new
         {
-            result.Status, result.HttpStatusCode, result.DurationMs,
-            result.AuthenticationStatus, result.Message, result.CheckedAtUtc
+            result.Status, result.DurationMs, result.AuthenticationStatus,
+            result.ServerVersion, result.CapabilitiesSummary, result.Message, result.CheckedAtUtc
         });
     }
 

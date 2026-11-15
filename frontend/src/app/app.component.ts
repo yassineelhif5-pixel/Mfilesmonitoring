@@ -9,7 +9,8 @@ interface Vault {
   organization: string; environment: string; monitoringEnabled: boolean;
   lastHealthCheck?: {
     checkedAtUtc: string; status: string; durationMs: number;
-    authenticationStatus: string; message: string;
+    authenticationStatus: string; serverVersion?: string;
+    capabilitiesSummary?: string; message: string;
   } | null;
 }
 
@@ -22,29 +23,23 @@ interface Vault {
       <header class="topbar">
         <div class="brand-mark">M</div>
         <div class="brand-copy"><strong>M-Files Cloud Monitoring</strong><span>Support Operations Portal</span></div>
-        <div class="spacer"></div>
-        <span class="readonly">READ ONLY</span>
+        <div class="spacer"></div><span class="readonly">READ ONLY</span>
         <span class="user" *ngIf="authenticated">{{ username }}</span>
         <button class="ghost" *ngIf="authenticated" (click)="logout()">Déconnexion</button>
       </header>
-
       <main class="content" *ngIf="!authenticated">
         <section class="login-card">
-          <div class="eyebrow">MFCMP · CLOUD MONITORING</div>
-          <h1>Connexion au portail</h1>
+          <div class="eyebrow">MFCMP · CLOUD MONITORING</div><h1>Connexion au portail</h1>
           <p class="muted">Accès réservé à l'équipe de supervision M-Files.</p>
           <form (ngSubmit)="login()">
-            <label for="username">Identifiant</label>
-            <input id="username" name="username" [(ngModel)]="loginName" autocomplete="username" required>
-            <label for="password">Mot de passe</label>
-            <input id="password" name="password" type="password" [(ngModel)]="loginPassword" autocomplete="current-password" required>
+            <label for="username">Identifiant</label><input id="username" name="username" [(ngModel)]="loginName" autocomplete="username" required>
+            <label for="password">Mot de passe</label><input id="password" name="password" type="password" [(ngModel)]="loginPassword" autocomplete="current-password" required>
             <button class="primary full" type="submit" [disabled]="busy">Se connecter</button>
           </form>
           <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
           <p class="muted small">Le mot de passe initial doit être changé à la première connexion.</p>
         </section>
       </main>
-
       <main class="content" *ngIf="authenticated && mustChangePassword">
         <section class="login-card">
           <div class="eyebrow">SÉCURITÉ DU COMPTE</div><h1>Changer le mot de passe</h1>
@@ -58,7 +53,6 @@ interface Vault {
           <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
         </section>
       </main>
-
       <main class="content" *ngIf="authenticated && !mustChangePassword">
         <div class="page-heading">
           <div><div class="eyebrow">OVERVIEW</div><h1>Supervision des coffres</h1><p class="muted">Vue des coffres M-Files Cloud enregistrés dans le portail.</p></div>
@@ -66,16 +60,16 @@ interface Vault {
         </div>
         <section class="notice"><strong>Mode lecture seule</strong><span>Les connecteurs ne réalisent aucune écriture dans les coffres M-Files.</span></section>
         <section class="panel">
-          <div class="panel-heading"><div><h2>Coffres surveillés</h2><p class="muted small">Le contrôle REST valide la disponibilité du endpoint, pas l'authentification M-Files.</p></div><span class="count">{{ vaults.length }} coffre(s)</span></div>
+          <div class="panel-heading"><div><h2>Coffres surveillés</h2><p class="muted small">Le test interroge les méthodes gRPC anonymes QueryVersion et GetServerCapabilities. Il ne valide pas encore les identifiants du coffre.</p></div><span class="count">{{ vaults.length }} coffre(s)</span></div>
           <div class="empty" *ngIf="vaults.length === 0">Aucun coffre configuré. Enregistre un premier coffre ci-dessous.</div>
           <div class="table-wrap" *ngIf="vaults.length > 0">
-            <table><thead><tr><th>Coffre</th><th>Environnement</th><th>État</th><th>Temps</th><th>Authentification</th><th></th></tr></thead>
+            <table><thead><tr><th>Coffre</th><th>Environnement</th><th>État gRPC</th><th>Version</th><th>Temps</th><th></th></tr></thead>
               <tbody><tr *ngFor="let vault of vaults">
                 <td><strong>{{ vault.name }}</strong><span class="sub">{{ vault.cloudHost }}</span></td>
                 <td>{{ vault.environment }}</td>
-                <td><span class="status" [class.ok]="vault.lastHealthCheck?.status === 'REACHABLE_AUTH_NOT_TESTED'">{{ vault.lastHealthCheck?.status || 'NOT_TESTED' }}</span></td>
+                <td><span class="status" [class.ok]="vault.lastHealthCheck?.status === 'GRPC_REACHABLE_AUTH_NOT_TESTED'">{{ vault.lastHealthCheck?.status || 'NOT_TESTED' }}</span></td>
+                <td>{{ vault.lastHealthCheck?.serverVersion || '—' }}</td>
                 <td>{{ vault.lastHealthCheck?.durationMs ?? '—' }}<span *ngIf="vault.lastHealthCheck"> ms</span></td>
-                <td>{{ vault.lastHealthCheck?.authenticationStatus || 'NOT_TESTED' }}</td>
                 <td><button class="small-button" (click)="testConnection(vault)" [disabled]="busy">Tester</button></td>
               </tr></tbody>
             </table>
@@ -152,7 +146,7 @@ export class AppComponent implements OnInit {
     this.busy = true;
     this.http.post(`/api/vaults/${vault.id}/connection-test`, {}, { headers: this.headers(), withCredentials: true }).subscribe({
       next: () => this.loadVaults(),
-      error: e => { this.errorMessage = e.error?.message || 'Le test de connexion a échoué.'; this.busy = false; }
+      error: e => { this.errorMessage = e.error?.message || 'Le test gRPC a échoué.'; this.busy = false; }
     });
   }
   logout(): void {

@@ -69,11 +69,7 @@ builder.Services.AddControllers();
 builder.Services.AddAuthorization(options =>
     options.AddPolicy("PortalPasswordChanged", policy =>
         policy.RequireAuthenticatedUser().RequireClaim("portal_password_changed", "true")));
-builder.Services.AddHttpClient<IVaultStatusProbe, RestVaultStatusProbe>(c =>
-{
-    c.Timeout = TimeSpan.FromSeconds(12);
-    c.DefaultRequestHeaders.UserAgent.ParseAdd("MFCMP-Monitor/1.0");
-});
+builder.Services.AddScoped<IVaultStatusProbe, GrpcVaultStatusProbe>();
 builder.Services.AddScoped<BootstrapAdminSeeder>();
 
 var app = builder.Build();
