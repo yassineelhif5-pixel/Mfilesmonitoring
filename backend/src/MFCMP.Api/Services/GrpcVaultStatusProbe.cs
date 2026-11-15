@@ -14,7 +14,7 @@ public sealed class GrpcVaultStatusProbe(ILogger<GrpcVaultStatusProbe> logger) :
     private static string DecodeVersion(ulong version) =>
         $"{version >> 48}.{(version >> 32) & 0xFFFF}.{(version >> 16) & 0xFFFF}.{version & 0xFFFF}";
 
-    public async Task<VaultHealthCheck> TestAsync(Vault vault, CancellationToken cancellationToken)
+    public async Task<VaultHealthCheck> TestAsync(MFCMP.Api.Domain.Vault vault, CancellationToken cancellationToken)
     {
         var result = new VaultHealthCheck
         {
