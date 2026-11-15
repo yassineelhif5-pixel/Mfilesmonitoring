@@ -57,25 +57,38 @@ public sealed class GrpcVaultStatusProbe(
                 result.Message = "gRPC endpoint reachable; monitoring identity authenticated and vault session validated.";
             }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (MFilesException exception)
         {
-            result.Status = "TIMEOUT";
-            result.Message = "M-Files Cloud diagnostic exceeded the 20-second timeout.";
+            result.Status = stage == "AUTHENTICATION" ? "AUTHENTICATION_FAILED" :
+                stage == "VAULT_ACCESS" ? "VAULT_ACCESS_FAILED" :
+                exception.StatusCode == StatusCode.Unavailable ? "CONNECTION_ERROR" :
+                $"MFILES_{exception.StatusCode.ToString().ToUpperInvariant()}";
+            result.AuthenticationStatus = stage == "AUTHENTICATION" ? "FAILED" : result.AuthenticationStatus;
+            result.Message = stage switch
+            {
+                "AUTHENTICATION" => "M-Files rejected the configured monitoring identity. Check the account, password/token and vault authentication configuration.",
+                "VAULT_ACCESS" => "The identity authenticated, but the vault session could not be validated. Check the account's vault access.",
+                _ => $"M-Files Cloud gRPC diagnostic failed ({exception.StatusCode})."
+            };
+            if (exception.ErrorCodeHex is { } code) result.Message = $"{result.Message} M-Files error: {code}.";
+            logger.LogWarning("M-Files gRPC probe failed for vault {VaultId} at stage {Stage}, status {StatusCode}, code {ErrorCode}.",
+                vault.Id, stage, exception.StatusCode, exception.ErrorCodeHex);
         }
         catch (RpcException exception)
         {
             result.Status = stage == "AUTHENTICATION" ? "AUTHENTICATION_FAILED" :
                 stage == "VAULT_ACCESS" ? "VAULT_ACCESS_FAILED" :
-                exception.StatusCode == StatusCode.Unavailable ? "CONNECTION_ERROR" : $"GRPC_{exception.StatusCode.ToString().ToUpperInvariant()}";
+                exception.StatusCode == StatusCode.Unavailable ? "CONNECTION_ERROR" :
+                $"GRPC_{exception.StatusCode.ToString().ToUpperInvariant()}";
             result.AuthenticationStatus = stage == "AUTHENTICATION" ? "FAILED" : result.AuthenticationStatus;
-            result.Message = stage switch
-            {
-                "AUTHENTICATION" => "The configured monitoring identity could not authenticate. Check the Key Vault secret and the vault authentication method.",
-                "VAULT_ACCESS" => "Authentication succeeded, but the vault session validation failed. Check the monitoring account permissions.",
-                _ => $"M-Files Cloud gRPC diagnostic failed ({exception.StatusCode})."
-            };
+            result.Message = $"M-Files Cloud gRPC diagnostic failed at {stage} ({exception.StatusCode}).";
             logger.LogWarning("M-Files gRPC probe failed for vault {VaultId} at stage {Stage} with status {StatusCode}.",
                 vault.Id, stage, exception.StatusCode);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            result.Status = "TIMEOUT";
+            result.Message = "M-Files Cloud diagnostic exceeded the 20-second timeout.";
         }
         catch (Exception exception)
         {

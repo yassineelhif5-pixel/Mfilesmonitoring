@@ -13,6 +13,11 @@ namespace MFCMP.Api.Controllers;
 [Route("api/vaults")]
 public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe statusProbe) : ControllerBase
 {
+    private static bool IsAzureKeyVaultHost(string host) =>
+        host.EndsWith(".vault.azure.net", StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith(".vault.usgovcloudapi.net", StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith(".vault.azure.cn", StringComparison.OrdinalIgnoreCase);
+
     [HttpGet]
     public async Task<IActionResult> GetAll(CancellationToken ct)
     {
@@ -47,7 +52,8 @@ public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe s
         if (!string.Equals(request.AuthenticationMode, "None", StringComparison.OrdinalIgnoreCase) &&
             (string.IsNullOrWhiteSpace(request.CredentialSecretUri) ||
              !Uri.TryCreate(request.CredentialSecretUri, UriKind.Absolute, out var secretUri) ||
-             secretUri.Scheme != Uri.UriSchemeHttps ||
+             secretUri.Scheme != Uri.UriSchemeHttps || !IsAzureKeyVaultHost(secretUri.Host) ||
+             !string.IsNullOrEmpty(secretUri.UserInfo) ||
              !secretUri.AbsolutePath.Contains("/secrets/", StringComparison.OrdinalIgnoreCase)))
             return BadRequest(new { message = "Configure a valid HTTPS Azure Key Vault secret URI." });
         if (await db.Vaults.AnyAsync(v => v.VaultGuid == request.VaultGuid, ct))

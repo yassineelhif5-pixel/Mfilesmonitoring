@@ -26,7 +26,7 @@ Credentials:
 Token:
 { "token": "the identity-provider token", "pluginName": "optional plugin", "configurationScope": "optional scope" }
 
-Create these secrets directly in Azure Key Vault. Register only the secret URI in MFCMP. The API identity must have permission to read the secret.
+Create these secrets directly in Azure Key Vault. Register only the secret URI in MFCMP. The API identity must have permission to read the secret. Secret URIs are restricted to Azure Key Vault DNS suffixes for public, US Government and China clouds.
 
 ## Current capabilities
 - Add M-Files Cloud vaults and configure per-vault authentication.
@@ -34,12 +34,18 @@ Create these secrets directly in Azure Key Vault. Register only the secret URI i
 - Automatic health checks with configurable per-vault cadence.
 - Rolling seven-day created-object counts and current non-deleted object totals.
 - Dashboard status, incidents, deduplication and incident state management.
+- Metrics collection failures are tracked as incidents and retried according to the configured interval.
 - Strictly read-only M-Files operations.
 
-## Important
-- Counts are filtered by the permissions of the configured M-Files monitoring account.
-- M-Files exact/approximate count flags are retained.
-- Daily created-object counts are historical searches on the built-in Created property (ID 20), not a live audit stream.
+## Metrics semantics
+- The built-in Created property is ID 20 and is a timestamp.
+- Daily created-object counts include objects visible to the monitoring account; to include deleted objects, that account also needs the M-Files right to see deleted objects.
+- The total object count explicitly excludes deleted objects.
+- M-Files exact/approximate count flags are retained. Counts are filtered by the monitoring account's permissions and are not necessarily privileged all-vault counts.
+- Daily Created counts are historical searches, not a live audit event stream.
+
+## Important boundaries
+- M-Files API calls are read-only except session lifecycle (login and logout).
 - Internal M-Files Cloud server filesystem logs are not assumed accessible.
 - This project does not claim exhaustive tracing of API calls made directly by unrelated client applications.
 - Microsoft Graph SSO/SCIM, Aino usage, licensing, notifications and production Azure infrastructure are future integrations.

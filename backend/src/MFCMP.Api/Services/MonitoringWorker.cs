@@ -49,7 +49,10 @@ public sealed class MonitoringWorker(
                     {
                         var lastMetrics = await db.VaultDailyObjectStatistics.Where(x => x.VaultId == vault.Id)
                             .OrderByDescending(x => x.CollectedAtUtc).Select(x => (DateTimeOffset?)x.CollectedAtUtc).FirstOrDefaultAsync(ct);
-                        if (lastMetrics is null || now - lastMetrics.Value >= TimeSpan.FromMinutes(Math.Clamp(vault.MetricsCollectionIntervalMinutes, 5, 1440)))
+                        var lastMetricsFailure = await db.Incidents.Where(i => i.VaultId == vault.Id && i.Category == "METRICS")
+                            .OrderByDescending(i => i.LastSeenUtc).Select(i => (DateTimeOffset?)i.LastSeenUtc).FirstOrDefaultAsync(ct);
+                        var lastMetricsAttempt = new[] { lastMetrics, lastMetricsFailure }.Max();
+                        if (lastMetricsAttempt is null || now - lastMetricsAttempt.Value >= TimeSpan.FromMinutes(Math.Clamp(vault.MetricsCollectionIntervalMinutes, 5, 1440)))
                         {
                             try
                             {
@@ -68,11 +71,14 @@ public sealed class MonitoringWorker(
                                         existing.CollectedAtUtc = row.CollectedAtUtc;
                                     }
                                 }
+                                await ResolveMetricsIncidentAsync(db, vault.Id, now, ct);
                                 await db.SaveChangesAsync(ct);
                             }
                             catch (Exception ex) when (ex is not OperationCanceledException)
                             {
                                 logger.LogWarning("Metrics collection failed for vault {VaultId}: {ExceptionType}.", vault.Id, ex.GetType().Name);
+                                await RecordMetricsIncidentAsync(db, vault, ex.GetType().Name, now, ct);
+                                await db.SaveChangesAsync(ct);
                             }
                         }
                     }
@@ -93,7 +99,9 @@ public sealed class MonitoringWorker(
     private static async Task UpdateIncidentAsync(MonitoringDbContext db, Vault vault, VaultHealthCheck check, CancellationToken ct)
     {
         var isFailure = check.Status is "TIMEOUT" or "CONNECTION_ERROR" or "AUTHENTICATION_FAILED" or
-            "VAULT_ACCESS_FAILED" or "AUTHENTICATION_CONFIGURATION_ERROR" or "DIAGNOSTIC_ERROR" or "INVALID_CONFIGURATION";
+            "VAULT_ACCESS_FAILED" or "AUTHENTICATION_CONFIGURATION_ERROR" or "DIAGNOSTIC_ERROR" or "INVALID_CONFIGURATION" ||
+            check.Status.StartsWith("GRPC_", StringComparison.Ordinal) ||
+            check.Status.StartsWith("MFILES_", StringComparison.Ordinal);
         var category = check.Status.Contains("AUTHENTICATION", StringComparison.Ordinal) ? "AUTHENTICATION" :
             check.Status == "VAULT_ACCESS_FAILED" ? "PERMISSIONS" : "CONNECTIVITY";
         var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{vault.Id:N}|{category}|{check.Status}")));
@@ -132,6 +140,41 @@ public sealed class MonitoringWorker(
                 incident.Status = "RESOLVED";
                 incident.ResolvedAtUtc = check.CheckedAtUtc;
             }
+        }
+    }
+
+    private static async Task RecordMetricsIncidentAsync(MonitoringDbContext db, Vault vault, string errorType, DateTimeOffset now, CancellationToken ct)
+    {
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{vault.Id:N}|METRICS")));
+        var active = await db.Incidents.FirstOrDefaultAsync(i => i.VaultId == vault.Id &&
+            i.Fingerprint == fingerprint && i.Status != "RESOLVED" && i.Status != "CLOSED", ct);
+        if (active is null)
+        {
+            db.Incidents.Add(new Incident
+            {
+                VaultId = vault.Id, Category = "METRICS", Severity = "P2", Status = "NEW",
+                Title = $"METRICS: {vault.Name}",
+                Description = "The document statistics collector failed. Check Key Vault access, monitoring account permissions and sanitized application logs.",
+                Fingerprint = fingerprint, FirstSeenUtc = now, LastSeenUtc = now,
+                LastErrorCode = errorType
+            });
+        }
+        else
+        {
+            active.LastSeenUtc = now;
+            active.Occurrences++;
+            active.LastErrorCode = errorType;
+        }
+    }
+
+    private static async Task ResolveMetricsIncidentAsync(MonitoringDbContext db, Guid vaultId, DateTimeOffset now, CancellationToken ct)
+    {
+        var open = await db.Incidents.Where(i => i.VaultId == vaultId && i.Category == "METRICS" &&
+            i.Status != "RESOLVED" && i.Status != "CLOSED").ToListAsync(ct);
+        foreach (var incident in open)
+        {
+            incident.Status = "RESOLVED";
+            incident.ResolvedAtUtc = now;
         }
     }
 }

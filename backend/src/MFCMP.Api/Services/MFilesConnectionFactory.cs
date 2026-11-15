@@ -34,18 +34,13 @@ public sealed class MFilesConnectionFactory(IVaultCredentialProvider credentials
 
         if (string.Equals(vault.AuthenticationMode, "Token", StringComparison.OrdinalIgnoreCase))
         {
-            var pluginName = secret.PluginName;
-            var scope = secret.ConfigurationScope;
-            var pluginVault = string.Empty;
-            if (string.IsNullOrWhiteSpace(pluginName) || string.IsNullOrWhiteSpace(scope))
-            {
-                var discovered = await connection.FindAuthenticationPluginAsync(vaultGuid, pluginName, cancellationToken);
-                pluginName ??= discovered.Name;
-                scope ??= discovered.Scope;
-                pluginVault = discovered.Vault;
-            }
-            await connection.LogInWithTokenAsync(vaultGuid, secret.Token!, pluginName!, scope!, clientName,
-                cancellationToken, pluginVault);
+            // Discover the server-side plugin configuration even when name/scope were supplied:
+            // its VaultGUID value is also part of the official token login request.
+            var discovered = await connection.FindAuthenticationPluginAsync(vaultGuid, secret.PluginName, cancellationToken);
+            var pluginName = secret.PluginName ?? discovered.Name;
+            var scope = secret.ConfigurationScope ?? discovered.Scope;
+            await connection.LogInWithTokenAsync(vaultGuid, secret.Token!, pluginName, scope, clientName,
+                cancellationToken, discovered.Vault);
             return true;
         }
 

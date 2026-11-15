@@ -15,7 +15,9 @@ public sealed class MonitoringController(MonitoringDbContext db) : ControllerBas
     public async Task<IActionResult> Dashboard(CancellationToken ct)
     {
         var vaults = await db.Vaults.AsNoTracking().Where(v => v.MonitoringEnabled).ToListAsync(ct);
+        var activeVaultIds = vaults.Select(v => v.Id).ToArray();
         var latest = await db.VaultHealthChecks.AsNoTracking()
+            .Where(h => activeVaultIds.Contains(h.VaultId))
             .GroupBy(h => h.VaultId)
             .Select(g => g.OrderByDescending(h => h.CheckedAtUtc).First())
             .ToListAsync(ct);
@@ -24,7 +26,8 @@ public sealed class MonitoringController(MonitoringDbContext db) : ControllerBas
             .CountAsync(ct);
         var since = DateTimeOffset.UtcNow.AddDays(-7);
         var daily = await db.VaultDailyObjectStatistics.AsNoTracking()
-            .Where(s => s.DateUtc >= DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-6)))
+            .Where(s => activeVaultIds.Contains(s.VaultId) &&
+                s.DateUtc >= DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-6)))
             .GroupBy(s => s.DateUtc)
             .Select(g => new
             {
@@ -40,8 +43,12 @@ public sealed class MonitoringController(MonitoringDbContext db) : ControllerBas
             totalVaults = vaults.Count,
             healthyVaults = latest.Count(x => x.Status == "HEALTHY"),
             warningVaults = latest.Count(x => x.Status.StartsWith("WARNING", StringComparison.Ordinal)),
-            failedVaults = latest.Count(x => x.Status is "TIMEOUT" or "CONNECTION_ERROR" or "AUTHENTICATION_FAILED" or "VAULT_ACCESS_FAILED" or "DIAGNOSTIC_ERROR"),
-            unknownVaults = vaults.Count - latest.Count,
+            failedVaults = latest.Count(x => x.Status is "TIMEOUT" or "CONNECTION_ERROR" or
+                "AUTHENTICATION_FAILED" or "AUTHENTICATION_CONFIGURATION_ERROR" or
+                "VAULT_ACCESS_FAILED" or "DIAGNOSTIC_ERROR" or "INVALID_CONFIGURATION" ||
+                x.Status.StartsWith("GRPC_", StringComparison.Ordinal) ||
+                x.Status.StartsWith("MFILES_", StringComparison.Ordinal)),
+            unknownVaults = Math.Max(0, vaults.Count - latest.Count),
             activeIncidents,
             vaultsCheckedLast7Days = latest.Count(x => x.CheckedAtUtc >= since),
             dailyStatistics = daily

@@ -29,9 +29,10 @@ public sealed class GrpcVaultMetricsCollector(MFilesConnectionFactory connection
             var day = today.AddDays(-offset);
             var start = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             var end = day.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            // No IsNotDeleted filter here: Created is a historical fact. The M-Files account
+            // must have see_deleted_objects to include deleted objects in this historical count.
             var conditions = new[]
             {
-                MFilesValues.IsNotDeleted(),
                 MFilesValues.PropertyCondition(20, ConditionType.GreaterThanOrEqual, MFilesValues.Timestamp(start)),
                 MFilesValues.PropertyCondition(20, ConditionType.LessThan, MFilesValues.Timestamp(end))
             };

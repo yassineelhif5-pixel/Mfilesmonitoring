@@ -14,6 +14,11 @@ public interface IVaultCredentialProvider
 
 public sealed class KeyVaultCredentialProvider(DefaultAzureCredential credential) : IVaultCredentialProvider
 {
+    private static bool IsAzureKeyVaultHost(string host) =>
+        host.EndsWith(".vault.azure.net", StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith(".vault.usgovcloudapi.net", StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith(".vault.azure.cn", StringComparison.OrdinalIgnoreCase);
+
     public async Task<VaultCredential?> GetAsync(Vault vault, CancellationToken cancellationToken)
     {
         if (string.Equals(vault.AuthenticationMode, "None", StringComparison.OrdinalIgnoreCase) ||
@@ -21,7 +26,8 @@ public sealed class KeyVaultCredentialProvider(DefaultAzureCredential credential
             return null;
 
         if (!Uri.TryCreate(vault.CredentialSecretUri, UriKind.Absolute, out var secretUri) ||
-            secretUri.Scheme != Uri.UriSchemeHttps)
+            secretUri.Scheme != Uri.UriSchemeHttps || !IsAzureKeyVaultHost(secretUri.Host) ||
+            !string.IsNullOrEmpty(secretUri.UserInfo))
             throw new InvalidOperationException("CredentialSecretUri must be an HTTPS Azure Key Vault secret URI.");
 
         var segments = secretUri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
@@ -32,8 +38,7 @@ public sealed class KeyVaultCredentialProvider(DefaultAzureCredential credential
         var version = segments.Length > 2 ? Uri.UnescapeDataString(segments[2]) : string.Empty;
         var client = new SecretClient(new Uri(secretUri.GetLeftPart(UriPartial.Authority)), credential);
         var response = await client.GetSecretAsync(name, version, cancellationToken);
-        var json = response.Value.Value;
-        using var document = JsonDocument.Parse(json);
+        using var document = JsonDocument.Parse(response.Value.Value);
         var root = document.RootElement;
 
         string? Read(string property) =>
