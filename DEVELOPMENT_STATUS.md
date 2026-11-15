@@ -31,8 +31,7 @@ Updated: 2026-11-15
 ## Validation
 - [x] GitHub Actions .NET 10 backend build passed on commit 714d4f9e391c61cdc58b189f197e3776ed6a9d4c.
 - [x] GitHub Actions Angular production build passed on the same commit.
-- [x] GitHub Actions backend and frontend builds passed on commit 3dd13f44f5bafbacf5d384e21e870ba6fb3a625d.
-- [ ] Validate the final host-validation/UI polish commit in CI.
+- [x] GitHub Actions backend and frontend builds passed on commit d4f571cb73327d4e1ba1fb7338421ace48d977cf (run 43724131612).
 - [ ] Apply both migrations against a live SQL Server instance.
 - [ ] Live integration test with a real M-Files Cloud vault and Azure Key Vault secret.
 - [ ] Verify that the monitoring account has the required minimum read-only rights.
