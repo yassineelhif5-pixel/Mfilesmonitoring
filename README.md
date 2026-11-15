@@ -29,7 +29,7 @@ Token:
 Create these secrets directly in Azure Key Vault. Register only the secret URI in MFCMP. The API identity must have permission to read the secret. Secret URIs are restricted to Azure Key Vault DNS suffixes for public, US Government and China clouds.
 
 ## Current capabilities
-- Add M-Files Cloud vaults and configure per-vault authentication.
+- Add M-Files Cloud vaults (host under *.cloudvault.m-files.com, HTTPS 443) and configure per-vault authentication.
 - Manually test gRPC connectivity, authentication and vault session.
 - Automatic health checks with configurable per-vault cadence.
 - Rolling seven-day created-object counts and current non-deleted object totals.

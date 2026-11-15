@@ -6,13 +6,18 @@ namespace MFCMP.Api.Services;
 
 public sealed class MFilesConnectionFactory(IVaultCredentialProvider credentials)
 {
+    private static bool IsMFilesCloudHost(Uri host) =>
+        host.Scheme == Uri.UriSchemeHttps &&
+        host.Port == 443 &&
+        host.Host.EndsWith(".cloudvault.m-files.com", StringComparison.OrdinalIgnoreCase);
+
     public MFilesConnection Open(PortalVault vault)
     {
-        if (!Uri.TryCreate(vault.CloudHost, UriKind.Absolute, out var host) || host.Scheme != Uri.UriSchemeHttps)
-            throw new InvalidOperationException("CloudHost must be a valid HTTPS URL.");
+        if (!Uri.TryCreate(vault.CloudHost, UriKind.Absolute, out var host) || !IsMFilesCloudHost(host))
+            throw new InvalidOperationException("CloudHost must be an M-Files Cloud host under *.cloudvault.m-files.com using HTTPS port 443.");
         return MFilesConnection.Open(new MFilesSettings
         {
-            Address = $"{host.Host}:{host.Port}",
+            Address = $"{host.Host}:443",
             UseTls = true,
             Vault = vault.VaultGuid.ToString("B")
         });
@@ -34,8 +39,6 @@ public sealed class MFilesConnectionFactory(IVaultCredentialProvider credentials
 
         if (string.Equals(vault.AuthenticationMode, "Token", StringComparison.OrdinalIgnoreCase))
         {
-            // Discover the server-side plugin configuration even when name/scope were supplied:
-            // its VaultGUID value is also part of the official token login request.
             var discovered = await connection.FindAuthenticationPluginAsync(vaultGuid, secret.PluginName, cancellationToken);
             var pluginName = secret.PluginName ?? discovered.Name;
             var scope = secret.ConfigurationScope ?? discovered.Scope;

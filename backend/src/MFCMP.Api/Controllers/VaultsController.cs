@@ -13,6 +13,10 @@ namespace MFCMP.Api.Controllers;
 [Route("api/vaults")]
 public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe statusProbe) : ControllerBase
 {
+    private static bool IsMFilesCloudHost(Uri host) =>
+        host.Scheme == Uri.UriSchemeHttps && host.Port == 443 &&
+        host.Host.EndsWith(".cloudvault.m-files.com", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsAzureKeyVaultHost(string host) =>
         host.EndsWith(".vault.azure.net", StringComparison.OrdinalIgnoreCase) ||
         host.EndsWith(".vault.usgovcloudapi.net", StringComparison.OrdinalIgnoreCase) ||
@@ -40,9 +44,9 @@ public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe s
     [HttpPost]
     public async Task<IActionResult> Create(CreateVaultRequest request, CancellationToken ct)
     {
-        if (!Uri.TryCreate(request.CloudHost, UriKind.Absolute, out var host) ||
-            host.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(host.UserInfo))
-            return BadRequest(new { message = "CloudHost must be a valid HTTPS URL without embedded credentials." });
+        if (!Uri.TryCreate(request.CloudHost, UriKind.Absolute, out var host) || !IsMFilesCloudHost(host) ||
+            !string.IsNullOrEmpty(host.UserInfo))
+            return BadRequest(new { message = "CloudHost must be an M-Files Cloud host under *.cloudvault.m-files.com using HTTPS port 443." });
         if (string.IsNullOrWhiteSpace(request.Name) || request.VaultGuid == Guid.Empty)
             return BadRequest(new { message = "Vault name and a valid Vault GUID are required." });
         if (!new[] { "DEV", "TEST", "UAT", "PREPROD", "PROD" }.Contains(request.Environment.ToUpperInvariant()))

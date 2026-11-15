@@ -237,7 +237,7 @@ export class AppComponent implements OnInit {
   }
   updateIncident(incident: Incident, status: string): void {
     this.http.patch(`/api/monitoring/incidents/${incident.id}`, { status }, { headers: this.headers(), withCredentials: true }).subscribe({
-      next: () => this.loadIncidents(),
+      next: () => { this.loadIncidents(); this.loadDashboard(); },
       error: () => this.errorMessage = 'Impossible de mettre à jour l’incident.'
     });
   }

@@ -12,6 +12,7 @@ Updated: 2026-11-15
 - [x] Multi-vault configuration with Cloud host, GUID, environment and configurable health/metrics intervals.
 - [x] Per-vault authentication modes: None, M-Files credentials and token/plugin.
 - [x] Azure Key Vault references; secret values are never stored in SQL. Key Vault URI hostnames are allowlisted to Azure Key Vault DNS suffixes.
+- [x] M-Files Cloud endpoint validation restricted to the documented cloudvault.m-files.com host suffix and HTTPS port 443.
 - [x] Official M-Files gRPC channel over TLS/HTTP2.
 - [x] Anonymous server version/capability diagnostics.
 - [x] M-Files credentials login and plugin token login using the official .NET client.
@@ -30,7 +31,8 @@ Updated: 2026-11-15
 ## Validation
 - [x] GitHub Actions .NET 10 backend build passed on commit 714d4f9e391c61cdc58b189f197e3776ed6a9d4c.
 - [x] GitHub Actions Angular production build passed on the same commit.
-- [ ] Validate the latest follow-up commit in CI.
+- [x] GitHub Actions backend and frontend builds passed on commit 3dd13f44f5bafbacf5d384e21e870ba6fb3a625d.
+- [ ] Validate the final host-validation/UI polish commit in CI.
 - [ ] Apply both migrations against a live SQL Server instance.
 - [ ] Live integration test with a real M-Files Cloud vault and Azure Key Vault secret.
 - [ ] Verify that the monitoring account has the required minimum read-only rights.
