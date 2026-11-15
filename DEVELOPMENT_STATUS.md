@@ -4,75 +4,60 @@ Updated: 2026-11-15
 
 ## Repository
 - Repository: https://github.com/yassineelhif5-pixel/Mfilesmonitoring
-- Default branch: main
-- Changes are committed directly to main.
+- Branch: main
+- Stack: .NET 10, Angular 21, SQL Server, official M-Files gRPC client 26.11.0.
 
-## Confirmed decisions
-- M-Files Cloud only.
-- .NET 10 / ASP.NET Core.
-- Angular 21 + TypeScript.
-- SQL Server / Azure SQL.
-- Official M-Files .NET gRPC client, version 26.11.0, as the primary connector.
-- M-Files REST is a complementary connector for documented supported endpoints.
-- Azure hosting.
-- Local portal authentication: bootstrap admin/admin in Development, mandatory password change.
-- Portal admin identity is separate from per-vault M-Files monitoring identities.
-- Microsoft Graph is a monitoring source only, not the portal login provider.
-- Strictly read-only access to M-Files vaults.
-
-## Completed in repository
-- [x] Repository access and main branch verified.
-- [x] Functional and technical specification.
-- [x] Architecture and security documentation.
-- [x] Data-source coverage policy.
-- [x] .NET 10 API project and solution.
-- [x] SQL Server EF Core entities for portal users, vault configuration and health history.
-- [x] Initial SQL Server migration for ASP.NET Identity, vaults and health history.
-- [x] Local bootstrap administrator seeder; never resets an existing password.
-- [x] First-login password-change endpoint with strong password validation.
-- [x] Claims-based API authorization blocking monitoring endpoints until password has been changed.
-- [x] CSRF token endpoint and antiforgery validation for unsafe authentication actions.
-- [x] Vault registration API.
-- [x] Official M-Files gRPC client dependency (MFiles.Grpc 26.11.0).
-- [x] Anonymous gRPC diagnostics using QueryVersion and GetServerCapabilities.
-- [x] Angular shell with login, mandatory password-change screen, vault list, vault registration and gRPC diagnostic action.
-- [x] Angular development proxy configuration.
+## Implemented in this iteration
+- [x] Local portal authentication, first-login password change and CSRF protection.
+- [x] Multi-vault configuration with Cloud host, GUID, environment and health/metrics intervals.
+- [x] Per-vault M-Files authentication modes: None, Credentials, Token/plugin.
+- [x] Azure Key Vault secret URI references; secret values are never persisted in SQL.
+- [x] Official M-Files gRPC channel, TLS and anonymous version/capability diagnostics.
+- [x] M-Files credentials login or plugin token login using official client methods.
+- [x] Authenticated vault session validation using GetVaultSessionInfo.
+- [x] Background health worker with per-vault intervals and isolation of failures.
+- [x] Daily document/object count collector for the previous seven UTC days.
+- [x] Total non-deleted object count and created-by-day count using GetObjectCountInSearch.
+- [x] Exact/approximate count flag persisted and exposed.
+- [x] Incident creation, fingerprint deduplication, occurrence count and lifecycle status.
+- [x] Dashboard, statistics and incident APIs.
+- [x] Angular dashboard, vault configuration, manual connection test and incident status management.
+- [x] SQL migration for authentication settings, daily statistics and incidents.
 - [x] GitHub Actions backend and frontend build workflow.
 
+## M-Files API implementation notes
+- Credentials use official MFilesConnection.LogInAsync(vaultGuid, username, password, clientName).
+- Plugin tokens use FindAuthenticationPluginAsync and LogInWithTokenAsync.
+- Session validation uses IRPCLogin.GetVaultSessionInfo.
+- Counts use IRPCSearch.GetObjectCountInSearch and MFilesValues.
+- Built-in property 20 is Created (timestamp); this is used for UTC-day counts.
+- M-Files Cloud host is connected over TLS/HTTP2 on port 443.
+- Sessions are disposed/logged out after each probe/collection.
+
+## Data and security boundaries
+- Portal admin and M-Files monitoring identities are separate.
+- Azure Key Vault secret JSON for Credentials: { username, password }.
+- Azure Key Vault secret JSON for Token: { token, pluginName?, configurationScope? }.
+- API managed identity or local DefaultAzureCredential identity must have Key Vault secrets/get.
+- M-Files monitoring accounts should have minimum read-only vault rights.
+- Only session lifecycle, read diagnostics and search/count calls are used.
+- No document, metadata, workflow, permission, user or vault configuration writes are performed by the monitoring connector.
+- Search counts respect the monitoring user's visibility; they are not necessarily a privileged all-vault count.
+- Daily Created counts are rolling historical search counts, not a live event stream.
+- Direct M-Files Cloud internal server filesystem logs and exhaustive tracing of all external client calls are not assumed available.
+
+## Not yet implemented / external integration
+- [ ] Live validation against a real M-Files Cloud vault and real Key Vault secret.
+- [ ] Microsoft Graph SSO/SCIM logs and provisioning diagnostics.
+- [ ] Aino usage and subscription/license provider.
+- [ ] API request tracing for instrumented applications / approved proxy / audit source.
+- [ ] Per-class and per-object-type breakdown (requires additional grouping/aggregation work).
+- [ ] Notification delivery and alert rules.
+- [ ] Historical data retention/archival policy.
+- [ ] Production Azure infrastructure, managed identity, SQL deployment and CI/CD release workflow.
+- [ ] Automated tests and runtime migration validation against SQL Server.
+
 ## Validation
-- [x] GitHub Actions backend restore and .NET build passed on commit 62e24d7426d782045b6ba7752c4137b526d904cd.
-- [x] GitHub Actions Angular install and production build passed on the same commit.
-- [ ] SQL migration application against a live SQL Server instance.
-- [ ] Live gRPC connection against an authorized M-Files Cloud test vault.
-- [ ] Authenticated vault access check using the configured read-only monitoring identity.
+The next GitHub Actions run validates the latest source changes. A successful build does not prove access to the user's real M-Files Cloud vault, Azure Key Vault or SQL Server. Live integration requires the tenant's host, vault GUID, read-only service account and Key Vault permissions.
 
-Local compilation has not been run in this environment; the successful compile evidence is GitHub Actions CI.
-
-## Not yet implemented
-- [ ] Per-vault monitoring identity configuration and secure Key Vault references.
-- [ ] Authenticated gRPC vault diagnostic.
-- [ ] KeepAlive lifecycle for long-running sessions.
-- [ ] Scheduled health worker and historical collection.
-- [ ] Dashboard aggregates and historical charts.
-- [ ] Incidents and error deduplication.
-- [ ] API audit/event ingestion and document analytics.
-- [ ] Microsoft Graph SSO/SCIM connectors.
-- [ ] License and Aino providers.
-- [ ] Reporting, notifications and Azure deployment.
-
-## External inputs required for live integration tests
-- M-Files Cloud test vault host and Vault GUID.
-- Dedicated M-Files monitoring account with minimum required read-only permissions.
-- Authentication method configured on that vault (M-Files credentials or supported identity-provider plugin/token).
-- SQL Server/Azure SQL connection for migration and runtime tests.
-- Optional Microsoft Graph app registration and least-privilege permissions.
-
-Never commit credentials or secret values.
-
-## Known limitations
-- The current gRPC diagnostic calls anonymous QueryVersion and GetServerCapabilities. It proves server endpoint reachability and capability discovery only; it does not authenticate the monitoring account or prove vault access.
-- The next connector step must configure a distinct monitoring identity per vault, store secrets in Azure Key Vault, authenticate using the actual supported vault authentication plugin/flow, and validate read-only vault access.
-- Internal M-Files Cloud server filesystem logs are not assumed accessible.
-- Exhaustive direct API tracing is not assumed; every source needs capture coverage metadata.
-- License and Aino metrics require an official accessible data source.
-- Deletion analytics require an audit/event source.
+Never commit real credentials, tokens, cookies or secret values.

@@ -1,3 +1,4 @@
+using Azure.Identity;
 using MFCMP.Api.Data;
 using MFCMP.Api.Domain;
 using MFCMP.Api.Services;
@@ -13,8 +14,6 @@ builder.Services.AddDbContext<MonitoringDbContext>(o => o.UseSqlServer(connectio
 builder.Services.AddIdentity<PortalUser, IdentityRole>(o =>
 {
     o.User.RequireUniqueEmail = false;
-    // The temporary bootstrap password is weak by design. Access to monitoring endpoints
-    // is blocked until the first-login password-change flow enforces a strong password.
     o.Password.RequiredLength = 5;
     o.Password.RequireDigit = false;
     o.Password.RequireLowercase = false;
@@ -69,8 +68,14 @@ builder.Services.AddControllers();
 builder.Services.AddAuthorization(options =>
     options.AddPolicy("PortalPasswordChanged", policy =>
         policy.RequireAuthenticatedUser().RequireClaim("portal_password_changed", "true")));
+
+builder.Services.AddSingleton<DefaultAzureCredential>();
+builder.Services.AddScoped<IVaultCredentialProvider, KeyVaultCredentialProvider>();
+builder.Services.AddScoped<MFilesConnectionFactory>();
 builder.Services.AddScoped<IVaultStatusProbe, GrpcVaultStatusProbe>();
+builder.Services.AddScoped<IVaultMetricsCollector, GrpcVaultMetricsCollector>();
 builder.Services.AddScoped<BootstrapAdminSeeder>();
+builder.Services.AddHostedService<MonitoringWorker>();
 
 var app = builder.Build();
 if (app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))

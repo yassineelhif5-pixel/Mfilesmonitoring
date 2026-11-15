@@ -9,6 +9,7 @@ namespace MFCMP.Api.Controllers;
 
 [ApiController]
 [Authorize(Policy = "PortalPasswordChanged")]
+[AutoValidateAntiforgeryToken]
 [Route("api/vaults")]
 public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe statusProbe) : ControllerBase
 {
@@ -18,12 +19,14 @@ public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe s
         var vaults = await db.Vaults.AsNoTracking().OrderBy(v => v.Name)
             .Select(v => new
             {
-                v.Id, v.Name, v.VaultGuid, v.CloudHost, v.Organization, v.Environment, v.MonitoringEnabled,
+                v.Id, v.Name, v.VaultGuid, v.CloudHost, v.Organization, v.Environment,
+                v.MonitoringEnabled, v.AuthenticationMode, v.HealthCheckIntervalSeconds,
+                v.MetricsCollectionIntervalMinutes,
                 LastHealthCheck = v.HealthChecks.OrderByDescending(h => h.CheckedAtUtc)
                     .Select(h => new
                     {
                         h.CheckedAtUtc, h.Status, h.DurationMs, h.AuthenticationStatus,
-                        h.ServerVersion, h.CapabilitiesSummary, h.Message
+                        h.AuthenticatedAccountName, h.ServerVersion, h.CapabilitiesSummary, h.Message
                     }).FirstOrDefault()
             }).ToListAsync(ct);
         return Ok(vaults);
@@ -37,17 +40,32 @@ public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe s
             return BadRequest(new { message = "CloudHost must be a valid HTTPS URL without embedded credentials." });
         if (string.IsNullOrWhiteSpace(request.Name) || request.VaultGuid == Guid.Empty)
             return BadRequest(new { message = "Vault name and a valid Vault GUID are required." });
+        if (!new[] { "DEV", "TEST", "UAT", "PREPROD", "PROD" }.Contains(request.Environment.ToUpperInvariant()))
+            return BadRequest(new { message = "Environment must be DEV, TEST, UAT, PREPROD or PROD." });
+        if (!new[] { "None", "Credentials", "Token" }.Contains(request.AuthenticationMode, StringComparer.OrdinalIgnoreCase))
+            return BadRequest(new { message = "AuthenticationMode must be None, Credentials or Token." });
+        if (!string.Equals(request.AuthenticationMode, "None", StringComparison.OrdinalIgnoreCase) &&
+            (string.IsNullOrWhiteSpace(request.CredentialSecretUri) ||
+             !Uri.TryCreate(request.CredentialSecretUri, UriKind.Absolute, out var secretUri) ||
+             secretUri.Scheme != Uri.UriSchemeHttps ||
+             !secretUri.AbsolutePath.Contains("/secrets/", StringComparison.OrdinalIgnoreCase)))
+            return BadRequest(new { message = "Configure a valid HTTPS Azure Key Vault secret URI." });
         if (await db.Vaults.AnyAsync(v => v.VaultGuid == request.VaultGuid, ct))
             return Conflict(new { message = "A vault with this GUID is already registered." });
 
         var vault = new Vault
         {
-            Name = request.Name.Trim(),
-            VaultGuid = request.VaultGuid,
+            Name = request.Name.Trim(), VaultGuid = request.VaultGuid,
             CloudHost = host.GetLeftPart(UriPartial.Authority),
             Organization = request.Organization?.Trim() ?? string.Empty,
             Environment = request.Environment.Trim().ToUpperInvariant(),
-            MonitoringEnabled = request.MonitoringEnabled
+            MonitoringEnabled = request.MonitoringEnabled,
+            AuthenticationMode = request.AuthenticationMode,
+            CredentialSecretUri = request.CredentialSecretUri,
+            AuthenticationPlugin = request.AuthenticationPlugin,
+            AuthenticationScope = request.AuthenticationScope,
+            HealthCheckIntervalSeconds = Math.Clamp(request.HealthCheckIntervalSeconds, 30, 3600),
+            MetricsCollectionIntervalMinutes = Math.Clamp(request.MetricsCollectionIntervalMinutes, 5, 1440)
         };
         db.Vaults.Add(vault);
         await db.SaveChangesAsync(ct);
@@ -59,18 +77,21 @@ public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe s
     {
         var vault = await db.Vaults.FirstOrDefaultAsync(v => v.Id == id, ct);
         if (vault is null) return NotFound();
-
         var result = await statusProbe.TestAsync(vault, ct);
         db.VaultHealthChecks.Add(result);
         await db.SaveChangesAsync(ct);
         return Ok(new
         {
             result.Status, result.DurationMs, result.AuthenticationStatus,
-            result.ServerVersion, result.CapabilitiesSummary, result.Message, result.CheckedAtUtc
+            result.AuthenticatedAccountName, result.ServerVersion,
+            result.CapabilitiesSummary, result.Message, result.CheckedAtUtc
         });
     }
 
     public sealed record CreateVaultRequest(
         string Name, Guid VaultGuid, string CloudHost, string? Organization,
-        string Environment, bool MonitoringEnabled = true);
+        string Environment, bool MonitoringEnabled = true,
+        string AuthenticationMode = "None", string? CredentialSecretUri = null,
+        string? AuthenticationPlugin = null, string? AuthenticationScope = null,
+        int HealthCheckIntervalSeconds = 60, int MetricsCollectionIntervalMinutes = 15);
 }

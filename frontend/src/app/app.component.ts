@@ -7,11 +7,23 @@ interface LoginResult { username: string; mustChangePassword: boolean; }
 interface Vault {
   id: string; name: string; vaultGuid: string; cloudHost: string;
   organization: string; environment: string; monitoringEnabled: boolean;
+  authenticationMode: string;
   lastHealthCheck?: {
     checkedAtUtc: string; status: string; durationMs: number;
-    authenticationStatus: string; serverVersion?: string;
-    capabilitiesSummary?: string; message: string;
+    authenticationStatus: string; authenticatedAccountName?: string;
+    serverVersion?: string; capabilitiesSummary?: string; message: string;
   } | null;
+}
+interface Dashboard {
+  totalVaults: number; healthyVaults: number; warningVaults: number;
+  failedVaults: number; unknownVaults: number; activeIncidents: number;
+  vaultsCheckedLast7Days: number;
+  dailyStatistics: Array<{ dateUtc: string; createdCount: number; createdCountExact: boolean; totalObjectCount: number; totalObjectCountExact: boolean }>;
+}
+interface Incident {
+  id: string; vaultId: string; vaultName: string; category: string;
+  severity: string; status: string; title: string; description: string;
+  firstSeenUtc: string; lastSeenUtc: string; occurrences: number; lastErrorCode?: string;
 }
 
 @Component({
@@ -27,6 +39,7 @@ interface Vault {
         <span class="user" *ngIf="authenticated">{{ username }}</span>
         <button class="ghost" *ngIf="authenticated" (click)="logout()">Déconnexion</button>
       </header>
+
       <main class="content" *ngIf="!authenticated">
         <section class="login-card">
           <div class="eyebrow">MFCMP · CLOUD MONITORING</div><h1>Connexion au portail</h1>
@@ -40,6 +53,7 @@ interface Vault {
           <p class="muted small">Le mot de passe initial doit être changé à la première connexion.</p>
         </section>
       </main>
+
       <main class="content" *ngIf="authenticated && mustChangePassword">
         <section class="login-card">
           <div class="eyebrow">SÉCURITÉ DU COMPTE</div><h1>Changer le mot de passe</h1>
@@ -53,21 +67,31 @@ interface Vault {
           <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
         </section>
       </main>
+
       <main class="content" *ngIf="authenticated && !mustChangePassword">
         <div class="page-heading">
-          <div><div class="eyebrow">OVERVIEW</div><h1>Supervision des coffres</h1><p class="muted">Vue des coffres M-Files Cloud enregistrés dans le portail.</p></div>
-          <button class="primary" (click)="loadVaults()" [disabled]="busy">Actualiser</button>
+          <div><div class="eyebrow">OVERVIEW</div><h1>Supervision des coffres</h1><p class="muted">Disponibilité, authentification, incidents et activité documentaire M-Files Cloud.</p></div>
+          <button class="primary" (click)="refreshAll()" [disabled]="busy">↻ Actualiser</button>
         </div>
-        <section class="notice"><strong>Mode lecture seule</strong><span>Les connecteurs ne réalisent aucune écriture dans les coffres M-Files.</span></section>
+
+        <section class="kpi-grid">
+          <article class="kpi"><span>Coffres surveillés</span><strong>{{ dashboard?.totalVaults ?? 0 }}</strong><small>{{ dashboard?.vaultsCheckedLast7Days ?? 0 }} contrôlés récemment</small></article>
+          <article class="kpi"><span>Healthy</span><strong class="good">{{ dashboard?.healthyVaults ?? 0 }}</strong><small>Connexion et session validées</small></article>
+          <article class="kpi"><span>Warning / Unknown</span><strong class="warn">{{ (dashboard?.warningVaults ?? 0) + (dashboard?.unknownVaults ?? 0) }}</strong><small>Configuration ou données manquantes</small></article>
+          <article class="kpi"><span>Incidents actifs</span><strong class="bad">{{ dashboard?.activeIncidents ?? 0 }}</strong><small>{{ dashboard?.failedVaults ?? 0 }} coffre(s) en échec</small></article>
+        </section>
+
+        <section class="notice"><strong>Supervision en lecture seule</strong><span>Les appels M-Files exécutés par le portail sont limités aux diagnostics, à l'authentification/session et aux recherches de comptage. Aucun objet n'est créé, modifié ou supprimé.</span></section>
+
         <section class="panel">
-          <div class="panel-heading"><div><h2>Coffres surveillés</h2><p class="muted small">Le test interroge les méthodes gRPC anonymes QueryVersion et GetServerCapabilities. Il ne valide pas encore les identifiants du coffre.</p></div><span class="count">{{ vaults.length }} coffre(s)</span></div>
+          <div class="panel-heading"><div><h2>Coffres et état de connexion</h2><p class="muted small">Health checks automatiques, fréquence configurée par coffre. Le compte technique doit disposer uniquement des droits de lecture requis.</p></div><span class="count">{{ vaults.length }} coffre(s)</span></div>
           <div class="empty" *ngIf="vaults.length === 0">Aucun coffre configuré. Enregistre un premier coffre ci-dessous.</div>
           <div class="table-wrap" *ngIf="vaults.length > 0">
-            <table><thead><tr><th>Coffre</th><th>Environnement</th><th>État gRPC</th><th>Version</th><th>Temps</th><th></th></tr></thead>
+            <table><thead><tr><th>Coffre</th><th>Env.</th><th>Authentification</th><th>État</th><th>Version</th><th>Temps</th><th></th></tr></thead>
               <tbody><tr *ngFor="let vault of vaults">
                 <td><strong>{{ vault.name }}</strong><span class="sub">{{ vault.cloudHost }}</span></td>
-                <td>{{ vault.environment }}</td>
-                <td><span class="status" [class.ok]="vault.lastHealthCheck?.status === 'GRPC_REACHABLE_AUTH_NOT_TESTED'">{{ vault.lastHealthCheck?.status || 'NOT_TESTED' }}</span></td>
+                <td>{{ vault.environment }}</td><td>{{ vault.lastHealthCheck?.authenticationStatus || vault.authenticationMode }}</td>
+                <td><span class="status" [class.ok]="vault.lastHealthCheck?.status === 'HEALTHY'" [class.fail]="vault.lastHealthCheck?.status?.includes('FAILED') || vault.lastHealthCheck?.status === 'CONNECTION_ERROR'">{{ vault.lastHealthCheck?.status || 'NOT_TESTED' }}</span></td>
                 <td>{{ vault.lastHealthCheck?.serverVersion || '—' }}</td>
                 <td>{{ vault.lastHealthCheck?.durationMs ?? '—' }}<span *ngIf="vault.lastHealthCheck"> ms</span></td>
                 <td><button class="small-button" (click)="testConnection(vault)" [disabled]="busy">Tester</button></td>
@@ -75,14 +99,51 @@ interface Vault {
             </table>
           </div>
         </section>
+
         <section class="panel">
-          <h2>Ajouter un coffre Cloud</h2>
+          <div class="panel-heading"><div><h2>Activité documentaire — 7 derniers jours</h2><p class="muted small">Comptage des objets créés (propriété système Created) et total des objets non supprimés. Les indicateurs précisent si le comptage est exact selon M-Files.</p></div></div>
+          <div class="empty" *ngIf="!dashboard?.dailyStatistics?.length">Pas encore de données. Configure une identité de supervision M-Files pour activer la collecte.</div>
+          <div class="table-wrap" *ngIf="dashboard?.dailyStatistics?.length">
+            <table><thead><tr><th>Date UTC</th><th>Objets créés</th><th>Total objets</th><th>Collecte</th></tr></thead>
+              <tbody><tr *ngFor="let day of dashboard?.dailyStatistics">
+                <td>{{ day.dateUtc }}</td><td>{{ day.createdCount | number }} <span class="sub" *ngIf="!day.createdCountExact">Comptage non exact (limite M-Files)</span></td>
+                <td>{{ day.totalObjectCount | number }} <span class="sub" *ngIf="!day.totalObjectCountExact">Comptage non exact (limite M-Files)</span></td>
+                <td><span class="status ok">AVAILABLE</span></td>
+              </tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading"><div><h2>Incidents</h2><p class="muted small">Incidents générés par les contrôles de connexion, d'authentification et d'accès au coffre.</p></div><span class="count">{{ incidents.length }} affiché(s)</span></div>
+          <div class="empty" *ngIf="incidents.length === 0">Aucun incident enregistré.</div>
+          <div class="table-wrap" *ngIf="incidents.length">
+            <table><thead><tr><th>Incident</th><th>Coffre</th><th>Priorité</th><th>État</th><th>Occurrences</th><th>Dernière détection</th><th>Action</th></tr></thead>
+              <tbody><tr *ngFor="let incident of incidents">
+                <td><strong>{{ incident.title }}</strong><span class="sub">{{ incident.description }}</span></td>
+                <td>{{ incident.vaultName }}</td><td><span class="status" [class.fail]="incident.severity === 'P1'">{{ incident.severity }}</span></td>
+                <td>{{ incident.status }}</td><td>{{ incident.occurrences }}</td><td>{{ incident.lastSeenUtc | date:'short' }}</td>
+                <td><select [ngModel]="incident.status" (ngModelChange)="updateIncident(incident, $event)" aria-label="État incident"><option>NEW</option><option>ACKNOWLEDGED</option><option>IN_PROGRESS</option><option>RESOLVED</option><option>CLOSED</option></select></td>
+              </tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Ajouter un coffre M-Files Cloud</h2>
+          <p class="muted small">Les secrets ne sont jamais enregistrés en clair dans SQL. La référence doit pointer vers un secret Azure Key Vault contenant un JSON Credentials ou Token.</p>
           <form class="vault-form" (ngSubmit)="addVault()">
             <div><label for="vaultName">Nom du coffre</label><input id="vaultName" name="vaultName" [(ngModel)]="newVault.name" required></div>
             <div><label for="vaultGuid">Vault GUID</label><input id="vaultGuid" name="vaultGuid" [(ngModel)]="newVault.vaultGuid" required></div>
             <div><label for="cloudHost">Cloud host (HTTPS)</label><input id="cloudHost" name="cloudHost" [(ngModel)]="newVault.cloudHost" placeholder="https://tenant.cloudvault.m-files.com" required></div>
             <div><label for="organization">Organisation</label><input id="organization" name="organization" [(ngModel)]="newVault.organization"></div>
             <div><label for="environment">Environnement</label><select id="environment" name="environment" [(ngModel)]="newVault.environment"><option>DEV</option><option>TEST</option><option>UAT</option><option>PREPROD</option><option>PROD</option></select></div>
+            <div><label for="authMode">Authentification M-Files</label><select id="authMode" name="authMode" [(ngModel)]="newVault.authenticationMode"><option value="None">Non configurée</option><option value="Credentials">M-Files username/password</option><option value="Token">Token / plugin SSO</option></select></div>
+            <div class="wide" *ngIf="newVault.authenticationMode !== 'None'"><label for="secretUri">Azure Key Vault Secret URI</label><input id="secretUri" name="secretUri" [(ngModel)]="newVault.credentialSecretUri" placeholder="https://vaultname.vault.azure.net/secrets/mfiles-monitoring"></div>
+            <div *ngIf="newVault.authenticationMode === 'Token'"><label for="plugin">Authentication plugin (optionnel)</label><input id="plugin" name="plugin" [(ngModel)]="newVault.authenticationPlugin"></div>
+            <div *ngIf="newVault.authenticationMode === 'Token'"><label for="scope">Authentication scope (optionnel)</label><input id="scope" name="scope" [(ngModel)]="newVault.authenticationScope"></div>
+            <div><label for="healthInterval">Health check (secondes)</label><input id="healthInterval" name="healthInterval" type="number" min="30" max="3600" [(ngModel)]="newVault.healthCheckIntervalSeconds"></div>
+            <div><label for="metricsInterval">Collecte métriques (minutes)</label><input id="metricsInterval" name="metricsInterval" type="number" min="5" max="1440" [(ngModel)]="newVault.metricsCollectionIntervalMinutes"></div>
             <div class="form-action"><button class="primary" type="submit" [disabled]="busy">Ajouter le coffre</button></div>
           </form>
         </section>
@@ -99,7 +160,12 @@ export class AppComponent implements OnInit {
   loginName = 'admin'; loginPassword = 'admin';
   currentPassword = 'admin'; newPassword = ''; confirmPassword = '';
   busy = false; errorMessage = ''; vaults: Vault[] = [];
-  newVault = { name: '', vaultGuid: '', cloudHost: '', organization: '', environment: 'DEV' };
+  dashboard: Dashboard | null = null; incidents: Incident[] = [];
+  newVault = {
+    name: '', vaultGuid: '', cloudHost: '', organization: '', environment: 'DEV',
+    authenticationMode: 'None', credentialSecretUri: '', authenticationPlugin: '',
+    authenticationScope: '', healthCheckIntervalSeconds: 60, metricsCollectionIntervalMinutes: 15
+  };
 
   ngOnInit(): void {
     this.http.get<{ requestToken: string }>('/api/auth/csrf', { withCredentials: true }).subscribe({
@@ -110,48 +176,74 @@ export class AppComponent implements OnInit {
   private headers(): HttpHeaders { return new HttpHeaders({ 'X-CSRF-TOKEN': this.csrfToken }); }
   private restoreSession(): void {
     this.http.get<LoginResult>('/api/auth/me', { withCredentials: true }).subscribe({
-      next: r => { this.authenticated = true; this.username = r.username; this.mustChangePassword = r.mustChangePassword; if (!this.mustChangePassword) this.loadVaults(); },
+      next: r => { this.authenticated = true; this.username = r.username; this.mustChangePassword = r.mustChangePassword; if (!this.mustChangePassword) this.refreshAll(); },
       error: () => this.authenticated = false
     });
   }
   login(): void {
     this.busy = true; this.errorMessage = '';
     this.http.post<LoginResult>('/api/auth/login', { username: this.loginName, password: this.loginPassword }, { headers: this.headers(), withCredentials: true }).subscribe({
-      next: r => { this.authenticated = true; this.username = r.username; this.mustChangePassword = r.mustChangePassword; this.busy = false; if (!this.mustChangePassword) this.loadVaults(); },
+      next: r => { this.authenticated = true; this.username = r.username; this.mustChangePassword = r.mustChangePassword; this.busy = false; if (!this.mustChangePassword) this.refreshAll(); },
       error: e => { this.errorMessage = e.error?.message || 'Échec de connexion.'; this.busy = false; }
     });
   }
   changePassword(): void {
     this.busy = true; this.errorMessage = '';
     this.http.post('/api/auth/change-password', { currentPassword: this.currentPassword, newPassword: this.newPassword, confirmPassword: this.confirmPassword }, { headers: this.headers(), withCredentials: true }).subscribe({
-      next: () => { this.mustChangePassword = false; this.busy = false; this.loadVaults(); },
+      next: () => { this.mustChangePassword = false; this.busy = false; this.refreshAll(); },
       error: e => { this.errorMessage = e.error?.errors?.join(' ') || e.error?.message || 'Impossible de modifier le mot de passe.'; this.busy = false; }
     });
   }
+  refreshAll(): void { this.loadVaults(); this.loadDashboard(); this.loadIncidents(); }
   loadVaults(): void {
-    this.busy = true;
     this.http.get<Vault[]>('/api/vaults', { withCredentials: true }).subscribe({
-      next: r => { this.vaults = r; this.busy = false; },
-      error: () => { this.errorMessage = 'Impossible de charger les coffres.'; this.busy = false; }
+      next: r => this.vaults = r,
+      error: () => this.errorMessage = 'Impossible de charger les coffres.'
+    });
+  }
+  loadDashboard(): void {
+    this.http.get<Dashboard>('/api/monitoring/dashboard', { withCredentials: true }).subscribe({
+      next: r => this.dashboard = r,
+      error: () => this.errorMessage = 'Impossible de charger le dashboard.'
+    });
+  }
+  loadIncidents(): void {
+    this.http.get<Incident[]>('/api/monitoring/incidents', { withCredentials: true }).subscribe({
+      next: r => this.incidents = r,
+      error: () => this.errorMessage = 'Impossible de charger les incidents.'
     });
   }
   addVault(): void {
     this.busy = true; this.errorMessage = '';
-    this.http.post('/api/vaults', { ...this.newVault, monitoringEnabled: true }, { headers: this.headers(), withCredentials: true }).subscribe({
-      next: () => { this.newVault = { name: '', vaultGuid: '', cloudHost: '', organization: '', environment: 'DEV' }; this.loadVaults(); },
+    this.http.post('/api/vaults', {
+      ...this.newVault, monitoringEnabled: true,
+      credentialSecretUri: this.newVault.credentialSecretUri || null,
+      authenticationPlugin: this.newVault.authenticationPlugin || null,
+      authenticationScope: this.newVault.authenticationScope || null
+    }, { headers: this.headers(), withCredentials: true }).subscribe({
+      next: () => {
+        this.newVault = { name: '', vaultGuid: '', cloudHost: '', organization: '', environment: 'DEV', authenticationMode: 'None', credentialSecretUri: '', authenticationPlugin: '', authenticationScope: '', healthCheckIntervalSeconds: 60, metricsCollectionIntervalMinutes: 15 };
+        this.busy = false; this.refreshAll();
+      },
       error: e => { this.errorMessage = e.error?.message || 'Impossible d’enregistrer le coffre.'; this.busy = false; }
     });
   }
   testConnection(vault: Vault): void {
-    this.busy = true;
+    this.busy = true; this.errorMessage = '';
     this.http.post(`/api/vaults/${vault.id}/connection-test`, {}, { headers: this.headers(), withCredentials: true }).subscribe({
-      next: () => this.loadVaults(),
+      next: () => { this.busy = false; this.refreshAll(); },
       error: e => { this.errorMessage = e.error?.message || 'Le test gRPC a échoué.'; this.busy = false; }
+    });
+  }
+  updateIncident(incident: Incident, status: string): void {
+    this.http.patch(`/api/monitoring/incidents/${incident.id}`, { status }, { headers: this.headers(), withCredentials: true }).subscribe({
+      next: () => this.loadIncidents(),
+      error: () => this.errorMessage = 'Impossible de mettre à jour l’incident.'
     });
   }
   logout(): void {
     this.http.post('/api/auth/logout', {}, { headers: this.headers(), withCredentials: true }).subscribe({
-      next: () => { this.authenticated = false; this.vaults = []; this.loginPassword = ''; },
+      next: () => { this.authenticated = false; this.vaults = []; this.dashboard = null; this.incidents = []; this.loginPassword = ''; },
       error: () => this.errorMessage = 'La déconnexion a échoué.'
     });
   }

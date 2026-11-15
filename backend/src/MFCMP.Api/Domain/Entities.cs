@@ -17,9 +17,17 @@ public sealed class Vault
     public string Organization { get; set; } = string.Empty;
     public string Environment { get; set; } = "DEV";
     public bool MonitoringEnabled { get; set; } = true;
+    public string AuthenticationMode { get; set; } = "None";
+    public string? CredentialSecretUri { get; set; }
+    public string? AuthenticationPlugin { get; set; }
+    public string? AuthenticationScope { get; set; }
+    public int HealthCheckIntervalSeconds { get; set; } = 60;
+    public int MetricsCollectionIntervalMinutes { get; set; } = 15;
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<VaultHealthCheck> HealthChecks { get; set; } = new List<VaultHealthCheck>();
+    public ICollection<VaultDailyObjectStatistic> DailyStatistics { get; set; } = new List<VaultDailyObjectStatistic>();
+    public ICollection<Incident> Incidents { get; set; } = new List<Incident>();
 }
 
 public sealed class VaultHealthCheck
@@ -32,7 +40,40 @@ public sealed class VaultHealthCheck
     public int? HttpStatusCode { get; set; }
     public long DurationMs { get; set; }
     public string AuthenticationStatus { get; set; } = "NOT_TESTED";
+    public string? AuthenticatedAccountName { get; set; }
     public string? ServerVersion { get; set; }
     public string? CapabilitiesSummary { get; set; }
     public string Message { get; set; } = string.Empty;
+}
+
+public sealed class VaultDailyObjectStatistic
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid VaultId { get; set; }
+    public Vault? Vault { get; set; }
+    public DateOnly DateUtc { get; set; }
+    public long CreatedCount { get; set; }
+    public bool CreatedCountIsExact { get; set; }
+    public long TotalObjectCount { get; set; }
+    public bool TotalObjectCountIsExact { get; set; }
+    public DateTimeOffset CollectedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class Incident
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid VaultId { get; set; }
+    public Vault? Vault { get; set; }
+    public string Category { get; set; } = "CONNECTIVITY";
+    public string Severity { get; set; } = "P2";
+    public string Status { get; set; } = "NEW";
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string Fingerprint { get; set; } = string.Empty;
+    public DateTimeOffset FirstSeenUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset LastSeenUtc { get; set; } = DateTimeOffset.UtcNow;
+    public int Occurrences { get; set; } = 1;
+    public DateTimeOffset? AcknowledgedAtUtc { get; set; }
+    public DateTimeOffset? ResolvedAtUtc { get; set; }
+    public string? LastErrorCode { get; set; }
 }

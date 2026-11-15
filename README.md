@@ -1,69 +1,45 @@
-# M-Files Cloud Monitoring Portal (MFCMP)
+# MFCMP — M-Files Cloud Monitoring Portal
 
-Portail de supervision **M-Files Cloud uniquement**, en lecture seule vis-à-vis des coffres.
+Read-only monitoring portal for M-Files Cloud support teams.
 
-## Architecture retenue
+## Stack
+- ASP.NET Core .NET 10 API
+- Angular 21 / TypeScript
+- SQL Server / EF Core
+- Official MFiles.Grpc .NET client
+- Azure Key Vault for per-vault technical credentials
 
-- Backend : .NET 10 / ASP.NET Core Web API
-- Frontend : Angular + TypeScript
-- Base de données : SQL Server / Azure SQL
-- Connecteurs M-Files : gRPC prioritaire + REST complémentaire
-- Identité du portail : compte local bootstrap `admin/admin` (changement obligatoire au premier démarrage)
-- Identité M-Files : compte(s) technique(s) distinct(s), à configurer par coffre, en lecture seule
-- Microsoft Graph : source de données pour SSO, audit et SCIM uniquement
-- Hébergement cible : Azure
-- Workers : collectes indépendantes du frontend
+## Local setup
+1. Install .NET 10 SDK, Node.js 22 and SQL Server.
+2. Copy backend/src/MFCMP.Api/appsettings.Development.example.json to appsettings.Development.json.
+3. Set ConnectionStrings:DefaultConnection to your local SQL Server.
+4. From backend/src/MFCMP.Api run dotnet run. Database migrations apply when Database:ApplyMigrationsOnStartup is true.
+5. In another terminal, from frontend run npm install then npm start.
+6. Open http://localhost:4200.
 
-## Principes de sécurité
+Development bootstrap portal account: admin / admin. It is created once and must be changed on first login. Do not use this account as an M-Files identity.
 
-1. Le compte `admin/admin` sert uniquement à accéder au portail. Il n'est jamais utilisé pour se connecter à M-Files.
-2. Le mot de passe bootstrap est hashé, le changement au premier login est obligatoire et le compte n'est créé qu'une seule fois.
-3. Tous les connecteurs M-Files appliquent une politique stricte de lecture seule.
-4. Aucun secret, jeton, cookie ou contenu documentaire sensible ne doit être écrit dans les logs.
-5. Une fonctionnalité sans source API/audit officiellement disponible doit indiquer clairement `NOT_AVAILABLE` ou `NOT_CONFIGURED`.
-6. Le portail ne prétend pas tracer exhaustivement les appels directs aux API M-Files Cloud sans source de capture exhaustive.
+## Per-vault Key Vault secret formats
+Credentials:
+{ "username": "mfcmp-monitor", "password": "the real password" }
 
-## Structure cible
+Token:
+{ "token": "the identity-provider token", "pluginName": "optional plugin", "configurationScope": "optional scope" }
 
-```text
-backend/
-  MFCMP.sln
-  src/
-    MFCMP.Api/
-    MFCMP.Application/
-    MFCMP.Domain/
-    MFCMP.Infrastructure/
-    MFCMP.Connectors.MFiles/
-    MFCMP.Connectors.Entra/
-    MFCMP.Monitoring.Workers/
-    MFCMP.Reporting/
-  tests/
-frontend/
-  mfcmp-angular/
-database/
-  migrations/
-  scripts/
-deployment/
-  docker/
-  azure/
-  github-actions/
-documentation/
-  architecture/
-  api/
-  installation/
-  operations/
-  security/
-```
+Create these secrets directly in Azure Key Vault. Register only the secret URI in MFCMP. The API identity must have permission to read the secret.
 
-## Démarrage du développement
+## Current capabilities
+- Add M-Files Cloud vaults and configure per-vault authentication.
+- Manually test gRPC connectivity, authentication and vault session.
+- Automatic health checks with configurable per-vault cadence.
+- Rolling seven-day created-object counts and current non-deleted object totals.
+- Dashboard status, incidents, deduplication and incident state management.
+- Strictly read-only M-Files operations.
 
-Consulter :
-- [Cahier des charges](documentation/architecture/functional-technical-specification.md)
-- [Architecture](documentation/architecture/architecture.md)
-- [Sécurité et lecture seule](documentation/security/security-model.md)
-- [Couverture des sources de données](documentation/architecture/data-source-coverage.md)
-- [État du développement](DEVELOPMENT_STATUS.md)
-
-## État actuel
-
-Le dépôt contient les documents de cadrage et la structure de démarrage. Les connecteurs réels, l'application et les workers restent à implémenter et à valider avec un coffre M-Files Cloud de test.
+## Important
+- Counts are filtered by the permissions of the configured M-Files monitoring account.
+- M-Files exact/approximate count flags are retained.
+- Daily created-object counts are historical searches on the built-in Created property (ID 20), not a live audit stream.
+- Internal M-Files Cloud server filesystem logs are not assumed accessible.
+- This project does not claim exhaustive tracing of API calls made directly by unrelated client applications.
+- Microsoft Graph SSO/SCIM, Aino usage, licensing, notifications and production Azure infrastructure are future integrations.
