@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Grpc.Core;
 using MFCMP.Api.Domain;
 using MFiles.Grpc;
+using PortalVault = MFCMP.Api.Domain.Vault;
 
 namespace MFCMP.Api.Services;
 
@@ -12,7 +13,7 @@ public sealed class GrpcVaultStatusProbe(
     private static string DecodeVersion(ulong version) =>
         $"{version >> 48}.{(version >> 32) & 0xFFFF}.{(version >> 16) & 0xFFFF}.{version & 0xFFFF}";
 
-    public async Task<VaultHealthCheck> TestAsync(Vault vault, CancellationToken cancellationToken)
+    public async Task<VaultHealthCheck> TestAsync(PortalVault vault, CancellationToken cancellationToken)
     {
         var result = new VaultHealthCheck { VaultId = vault.Id, AuthenticationStatus = "NOT_CONFIGURED" };
         if (!Uri.TryCreate(vault.CloudHost, UriKind.Absolute, out var host) ||

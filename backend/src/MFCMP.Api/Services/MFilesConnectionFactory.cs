@@ -1,11 +1,12 @@
 using MFCMP.Api.Domain;
 using MFiles.Grpc;
+using PortalVault = MFCMP.Api.Domain.Vault;
 
 namespace MFCMP.Api.Services;
 
 public sealed class MFilesConnectionFactory(IVaultCredentialProvider credentials)
 {
-    public MFilesConnection Open(Vault vault)
+    public MFilesConnection Open(PortalVault vault)
     {
         if (!Uri.TryCreate(vault.CloudHost, UriKind.Absolute, out var host) || host.Scheme != Uri.UriSchemeHttps)
             throw new InvalidOperationException("CloudHost must be a valid HTTPS URL.");
@@ -17,7 +18,7 @@ public sealed class MFilesConnectionFactory(IVaultCredentialProvider credentials
         });
     }
 
-    public async Task<bool> AuthenticateAsync(MFilesConnection connection, Vault vault, CancellationToken cancellationToken)
+    public async Task<bool> AuthenticateAsync(MFilesConnection connection, PortalVault vault, CancellationToken cancellationToken)
     {
         var secret = await credentials.GetAsync(vault, cancellationToken);
         if (secret is null) return false;

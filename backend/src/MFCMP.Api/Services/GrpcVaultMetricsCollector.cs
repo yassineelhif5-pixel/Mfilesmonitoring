@@ -1,16 +1,17 @@
 using MFCMP.Api.Domain;
 using MFiles.Grpc;
+using PortalVault = MFCMP.Api.Domain.Vault;
 
 namespace MFCMP.Api.Services;
 
 public interface IVaultMetricsCollector
 {
-    Task<IReadOnlyList<VaultDailyObjectStatistic>> CollectAsync(Vault vault, CancellationToken cancellationToken);
+    Task<IReadOnlyList<VaultDailyObjectStatistic>> CollectAsync(PortalVault vault, CancellationToken cancellationToken);
 }
 
 public sealed class GrpcVaultMetricsCollector(MFilesConnectionFactory connectionFactory) : IVaultMetricsCollector
 {
-    public async Task<IReadOnlyList<VaultDailyObjectStatistic>> CollectAsync(Vault vault, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<VaultDailyObjectStatistic>> CollectAsync(PortalVault vault, CancellationToken cancellationToken)
     {
         await using var connection = connectionFactory.Open(vault);
         var authenticated = await connectionFactory.AuthenticateAsync(connection, vault, cancellationToken);
