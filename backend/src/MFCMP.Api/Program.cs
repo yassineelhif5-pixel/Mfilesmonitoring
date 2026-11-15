@@ -35,6 +35,26 @@ builder.Services.ConfigureApplicationCookie(o =>
     o.Cookie.SameSite = SameSiteMode.Strict;
     o.SlidingExpiration = true;
     o.ExpireTimeSpan = TimeSpan.FromHours(8);
+    o.Events.OnRedirectToLogin = context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        }
+        context.Response.Redirect(context.RedirectUri);
+        return Task.CompletedTask;
+    };
+    o.Events.OnRedirectToAccessDenied = context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+        context.Response.Redirect(context.RedirectUri);
+        return Task.CompletedTask;
+    };
 });
 builder.Services.AddAntiforgery(o =>
 {
