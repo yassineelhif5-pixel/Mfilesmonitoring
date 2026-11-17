@@ -60,7 +60,8 @@ public sealed class MonitoringWorker(
                         await db.SaveChangesAsync(ct);
                     }
 
-                    if (!string.Equals(vault.AuthenticationMode, "None", StringComparison.OrdinalIgnoreCase))
+                    var hasEnabledServiceAccount = await db.ServiceAccounts.AnyAsync(a => a.Tenant != null && a.Tenant.VaultId == vault.Id && a.IsEnabled, ct);
+                    if (!string.Equals(vault.AuthenticationMode, "None", StringComparison.OrdinalIgnoreCase) || hasEnabledServiceAccount)
                     {
                         var lastMetrics = await db.VaultDailyObjectStatistics.Where(x => x.VaultId == vault.Id)
                             .OrderByDescending(x => x.CollectedAtUtc).Select(x => (DateTimeOffset?)x.CollectedAtUtc).FirstOrDefaultAsync(ct);
