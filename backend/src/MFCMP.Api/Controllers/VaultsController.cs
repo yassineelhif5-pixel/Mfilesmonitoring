@@ -94,6 +94,21 @@ public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe s
         if (vault is null) return NotFound();
         var result = await statusProbe.TestAsync(vault, ct);
         db.VaultHealthChecks.Add(result);
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.VaultId == vault.Id, ct);
+        if (tenant is not null)
+        {
+            var serviceAccount = await db.ServiceAccounts
+                .Where(a => a.TenantId == tenant.Id && a.IsEnabled)
+                .OrderByDescending(a => a.IsPrimary).FirstOrDefaultAsync(ct);
+            db.MonitoringLogs.Add(new MonitoringLog
+            {
+                TenantId = tenant.Id, VaultId = vault.Id, ServiceAccountId = serviceAccount?.Id,
+                Source = "MFCMP", Category = result.Status == "HEALTHY" ? "CONNECTIVITY" : "ERROR",
+                Level = result.Status == "HEALTHY" ? "INFO" : "ERROR",
+                EventName = "MANUAL_CONNECTION_TEST", Message = result.Message,
+                ErrorCode = result.Status == "HEALTHY" ? null : result.Status
+            });
+        }
         await db.SaveChangesAsync(ct);
         return Ok(new
         {
