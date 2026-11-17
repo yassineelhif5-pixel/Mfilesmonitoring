@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MFCMP.Api.Services;
 
-public sealed record VaultCredential(string? Username, string? Password, string? Token, string? PluginName, string? ConfigurationScope);
+public sealed record VaultCredential(string? Username, string? Password, string? Token, string? PluginName, string? ConfigurationScope, string AuthenticationMode);
 
 public interface IVaultCredentialProvider
 {
@@ -65,7 +65,7 @@ public sealed class KeyVaultCredentialProvider(DefaultAzureCredential credential
 
         var result = new VaultCredential(Read("username"), Read("password"), Read("token"),
             Read("pluginName") ?? pluginName,
-            Read("configurationScope") ?? configurationScope);
+            Read("configurationScope") ?? configurationScope, authMode);
 
         if (string.Equals(authMode, "Credentials", StringComparison.OrdinalIgnoreCase) &&
             (string.IsNullOrWhiteSpace(result.Username) || string.IsNullOrEmpty(result.Password)))
