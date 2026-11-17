@@ -2,6 +2,8 @@ using System.Text.Json;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using MFCMP.Api.Domain;
+using MFCMP.Api.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace MFCMP.Api.Services;
 
@@ -12,7 +14,7 @@ public interface IVaultCredentialProvider
     Task<VaultCredential?> GetAsync(Vault vault, CancellationToken cancellationToken);
 }
 
-public sealed class KeyVaultCredentialProvider(DefaultAzureCredential credential) : IVaultCredentialProvider
+public sealed class KeyVaultCredentialProvider(DefaultAzureCredential credential, MonitoringDbContext db) : IVaultCredentialProvider
 {
     private static bool IsAzureKeyVaultHost(string host) =>
         host.EndsWith(".vault.azure.net", StringComparison.OrdinalIgnoreCase) ||
@@ -21,11 +23,26 @@ public sealed class KeyVaultCredentialProvider(DefaultAzureCredential credential
 
     public async Task<VaultCredential?> GetAsync(Vault vault, CancellationToken cancellationToken)
     {
-        if (string.Equals(vault.AuthenticationMode, "None", StringComparison.OrdinalIgnoreCase) ||
-            string.IsNullOrWhiteSpace(vault.CredentialSecretUri))
+        var authMode = vault.AuthenticationMode;
+        var secretUriValue = vault.CredentialSecretUri;
+        var pluginName = vault.AuthenticationPlugin;
+        var configurationScope = vault.AuthenticationScope;
+        var tenant = await db.Tenants.Include(t => t.ServiceAccounts)
+            .FirstOrDefaultAsync(t => t.VaultId == vault.Id && t.IsActive, cancellationToken);
+        var primaryAccount = tenant?.ServiceAccounts.FirstOrDefault(a => a.IsEnabled && a.IsPrimary)
+            ?? tenant?.ServiceAccounts.FirstOrDefault(a => a.IsEnabled);
+        if (primaryAccount is not null)
+        {
+            authMode = primaryAccount.AuthenticationMode;
+            secretUriValue = primaryAccount.CredentialSecretUri;
+            primaryAccount.LastUsedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        if (string.Equals(authMode, "None", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(secretUriValue))
             return null;
 
-        if (!Uri.TryCreate(vault.CredentialSecretUri, UriKind.Absolute, out var secretUri) ||
+        if (!Uri.TryCreate(secretUriValue, UriKind.Absolute, out var secretUri) ||
             secretUri.Scheme != Uri.UriSchemeHttps || !IsAzureKeyVaultHost(secretUri.Host) ||
             !string.IsNullOrEmpty(secretUri.UserInfo))
             throw new InvalidOperationException("CredentialSecretUri must be an HTTPS Azure Key Vault secret URI.");
@@ -47,17 +64,17 @@ public sealed class KeyVaultCredentialProvider(DefaultAzureCredential credential
                 : null;
 
         var result = new VaultCredential(Read("username"), Read("password"), Read("token"),
-            Read("pluginName") ?? vault.AuthenticationPlugin,
-            Read("configurationScope") ?? vault.AuthenticationScope);
+            Read("pluginName") ?? pluginName,
+            Read("configurationScope") ?? configurationScope);
 
-        if (string.Equals(vault.AuthenticationMode, "Credentials", StringComparison.OrdinalIgnoreCase) &&
+        if (string.Equals(authMode, "Credentials", StringComparison.OrdinalIgnoreCase) &&
             (string.IsNullOrWhiteSpace(result.Username) || string.IsNullOrEmpty(result.Password)))
             throw new InvalidOperationException("The Key Vault secret must contain username and password.");
-        if (string.Equals(vault.AuthenticationMode, "Token", StringComparison.OrdinalIgnoreCase) &&
+        if (string.Equals(authMode, "Token", StringComparison.OrdinalIgnoreCase) &&
             string.IsNullOrWhiteSpace(result.Token))
             throw new InvalidOperationException("The Key Vault secret must contain a token.");
-        if (!string.Equals(vault.AuthenticationMode, "Credentials", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(vault.AuthenticationMode, "Token", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(authMode, "Credentials", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(authMode, "Token", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("AuthenticationMode must be None, Credentials or Token.");
 
         return result;
