@@ -103,7 +103,7 @@ public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe s
             db.MonitoringLogs.Add(new MonitoringLog
             {
                 TenantId = tenant.Id, VaultId = vault.Id, ServiceAccountId = serviceAccount?.Id,
-                Source = "MFCMP", Category = result.Status == "HEALTHY" ? "CONNECTIVITY" : "ERROR",
+                Source = "MFCMP", Category = result.Status.Contains("AUTHENTICATION", StringComparison.Ordinal) ? "AUTHENTICATION" : result.Status == "VAULT_ACCESS_FAILED" ? "PERMISSIONS" : result.Status == "HEALTHY" ? "CONNECTIVITY" : "ERROR",
                 Level = result.Status == "HEALTHY" ? "INFO" : "ERROR",
                 EventName = "MANUAL_CONNECTION_TEST", Message = result.Message,
                 ErrorCode = result.Status == "HEALTHY" ? null : result.Status
