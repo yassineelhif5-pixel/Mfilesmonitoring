@@ -31,13 +31,13 @@ public sealed class MFilesConnectionFactory(IVaultCredentialProvider credentials
         var vaultGuid = vault.VaultGuid.ToString("B");
         const string clientName = "MFCMP Monitoring";
 
-        if (string.Equals(vault.AuthenticationMode, "Credentials", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(secret.AuthenticationMode, "Credentials", StringComparison.OrdinalIgnoreCase))
         {
             await connection.LogInAsync(vaultGuid, secret.Username!, secret.Password!, clientName, cancellationToken);
             return true;
         }
 
-        if (string.Equals(vault.AuthenticationMode, "Token", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(secret.AuthenticationMode, "Token", StringComparison.OrdinalIgnoreCase))
         {
             var discovered = await connection.FindAuthenticationPluginAsync(vaultGuid, secret.PluginName, cancellationToken);
             var pluginName = secret.PluginName ?? discovered.Name;
