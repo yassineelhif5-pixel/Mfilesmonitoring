@@ -299,7 +299,12 @@ export class AppComponent implements OnInit {
     if (!this.selectedTenant) return;
     this.logsBusy = true;
     const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(this.logFilters)) {\n      if (!value) continue;\n      if (key === 'fromDate') params.set('fromUtc', new Date(value + 'T00:00:00Z').toISOString());\n      else if (key === 'toDate') params.set('toUtc', new Date(value + 'T23:59:59.999Z').toISOString());\n      else params.set(key, value);\n    }
+    for (const [key, value] of Object.entries(this.logFilters)) {
+      if (!value) continue;
+      if (key === 'fromDate') params.set('fromUtc', new Date(value + 'T00:00:00Z').toISOString());
+      else if (key === 'toDate') params.set('toUtc', new Date(value + 'T23:59:59.999Z').toISOString());
+      else params.set(key, value);
+    }
     this.http.get<{ total: number; items: MonitoringLog[] }>(`/api/tenants/${this.selectedTenant.id}/logs?${params.toString()}`, { withCredentials: true }).subscribe({
       next: result => { this.tenantLogs = result.items; this.logsTotal = result.total; this.logsBusy = false; },
       error: e => { this.errorMessage = e.error?.message || 'La recherche des logs a échoué.'; this.logsBusy = false; }
