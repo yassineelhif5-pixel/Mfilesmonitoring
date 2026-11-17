@@ -40,6 +40,24 @@ dbo.Incidents:
  FirstSeenUtc, LastSeenUtc datetimeoffset; Occurrences int;
  AcknowledgedAtUtc, ResolvedAtUtc datetimeoffset NULL; LastErrorCode nvarchar(100) NULL.
 
+
+dbo.Tenants:
+  One tenant per registered M-Files vault (unique VaultId); tenant code and active flag.
+  Existing vaults receive a tenant automatically through migration 202611170001.
+
+dbo.ServiceAccounts:
+  TenantId FK; service account display name and M-Files account identifier;
+  AuthenticationMode; CredentialSecretUri (Azure Key Vault URI only);
+  IsPrimary, IsEnabled, CreatedAtUtc, LastUsedAtUtc.
+  Unique (TenantId, AccountName). Passwords/tokens are never stored in SQL.
+
+dbo.MonitoringLogs:
+  TenantId FK; VaultId FK; optional ServiceAccountId FK;
+  OccurredAtUtc, Source, Category, Level, EventName, Message, Details,
+  ErrorCode, CorrelationId.
+  Indexed for tenant/date, tenant/category/level/date and service-account/date
+  to support targeted log searches and service-account traceability.
+
 dbo.__EFMigrationsHistory: EF Core migration ledger; do not edit manually.
 
 Portal SQL stores monitoring metadata, health history, daily aggregate counts, incidents
@@ -60,3 +78,5 @@ Deployment:
 Keep Database:ApplyMigrationsOnStartup=false in production and run migrations with a
 dedicated deployment identity. Runtime identity should not be db_owner.
 */
+
+Migration: backend/src/MFCMP.Api/Data/Migrations/202611170001_TenantsServiceAccountsAndLogs.cs
