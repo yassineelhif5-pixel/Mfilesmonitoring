@@ -28,6 +28,7 @@ public sealed class Vault
     public ICollection<VaultHealthCheck> HealthChecks { get; set; } = new List<VaultHealthCheck>();
     public ICollection<VaultDailyObjectStatistic> DailyStatistics { get; set; } = new List<VaultDailyObjectStatistic>();
     public ICollection<Incident> Incidents { get; set; } = new List<Incident>();
+    public Tenant? Tenant { get; set; }
 }
 
 public sealed class VaultHealthCheck
@@ -76,4 +77,54 @@ public sealed class Incident
     public DateTimeOffset? AcknowledgedAtUtc { get; set; }
     public DateTimeOffset? ResolvedAtUtc { get; set; }
     public string? LastErrorCode { get; set; }
+}
+
+public sealed class Tenant
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid VaultId { get; set; }
+    public Vault? Vault { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Code { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public ICollection<ServiceAccount> ServiceAccounts { get; set; } = new List<ServiceAccount>();
+    public ICollection<MonitoringLog> Logs { get; set; } = new List<MonitoringLog>();
+}
+
+public sealed class ServiceAccount
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TenantId { get; set; }
+    public Tenant? Tenant { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string AccountName { get; set; } = string.Empty;
+    public string? MFilesAccountId { get; set; }
+    public string AuthenticationMode { get; set; } = "Credentials";
+    public string CredentialSecretUri { get; set; } = string.Empty;
+    public bool IsPrimary { get; set; }
+    public bool IsEnabled { get; set; } = true;
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? LastUsedAtUtc { get; set; }
+    public ICollection<MonitoringLog> Logs { get; set; } = new List<MonitoringLog>();
+}
+
+public sealed class MonitoringLog
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TenantId { get; set; }
+    public Tenant? Tenant { get; set; }
+    public Guid VaultId { get; set; }
+    public Vault? Vault { get; set; }
+    public Guid? ServiceAccountId { get; set; }
+    public ServiceAccount? ServiceAccount { get; set; }
+    public DateTimeOffset OccurredAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public string Source { get; set; } = "MFCMP";
+    public string Category { get; set; } = "SYSTEM";
+    public string Level { get; set; } = "INFO";
+    public string EventName { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string? Details { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? CorrelationId { get; set; }
 }
