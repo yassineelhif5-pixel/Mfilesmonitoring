@@ -22,6 +22,8 @@ interface Dashboard {
 }
 interface DatabaseConfig { configured: boolean; provider: string; server?: string; database?: string; authentication?: string; encrypt?: string; message?: string; }
 interface DatabaseTest { success: boolean; code: string; message: string; explanation: string; server?: string; database?: string; technicalMessage?: string; }
+interface TenantInfo { id: string; vaultId: string; name: string; code: string; isActive: boolean; serviceAccounts: Array<{ id: string; name: string; accountName: string; authenticationMode: string; isPrimary: boolean; isEnabled: boolean; lastUsedAtUtc?: string }>; }
+interface MonitoringLog { id: string; occurredAtUtc: string; source: string; category: string; level: string; eventName: string; message: string; errorCode?: string; correlationId?: string; serviceAccountId?: string; serviceAccount?: string; }
 interface Incident {
   id: string; vaultId: string; vaultName: string; category: string;
   severity: string; status: string; title: string; description: string;
@@ -96,10 +98,29 @@ interface Incident {
                 <td><span class="status" [class.ok]="vault.lastHealthCheck?.status === 'HEALTHY'" [class.fail]="vault.lastHealthCheck?.status?.includes('FAILED') || vault.lastHealthCheck?.status === 'CONNECTION_ERROR'">{{ vault.lastHealthCheck?.status || 'NOT_TESTED' }}</span></td>
                 <td>{{ vault.lastHealthCheck?.serverVersion || '—' }}</td>
                 <td>{{ vault.lastHealthCheck?.durationMs ?? '—' }}<span *ngIf="vault.lastHealthCheck"> ms</span></td>
-                <td><button class="small-button" (click)="testConnection(vault)" [disabled]="busy">Tester</button></td>
+                <td><button class="small-button" (click)="testConnection(vault)" [disabled]="busy">Tester</button> <button class="small-button" (click)="openTenant(vault)">Tenant / logs</button></td>
               </tr></tbody>
             </table>
           </div>
+        </section>
+
+        <section class="panel" *ngIf="selectedTenant">
+          <div class="panel-heading"><div><div class="eyebrow">TENANT ISOLÉ PAR COFFRE</div><h2>{{ selectedTenant.name }} · {{ selectedTenant.code }}</h2><p class="muted small">Les résultats sont limités à ce tenant et à son coffre M-Files.</p></div><button class="ghost" (click)="closeTenant()">Fermer</button></div>
+          <h3>Comptes de service</h3>
+          <div class="empty" *ngIf="!selectedTenant.serviceAccounts.length">Aucun compte de service enregistré pour ce tenant.</div>
+          <div class="table-wrap" *ngIf="selectedTenant.serviceAccounts.length"><table><thead><tr><th>Nom</th><th>Compte M-Files</th><th>Authentification</th><th>Principal</th><th>Actif</th><th>Dernière utilisation</th></tr></thead><tbody><tr *ngFor="let account of selectedTenant.serviceAccounts"><td>{{ account.name }}</td><td>{{ account.accountName }}</td><td>{{ account.authenticationMode }}</td><td>{{ account.isPrimary ? 'Oui' : 'Non' }}</td><td>{{ account.isEnabled ? 'Oui' : 'Non' }}</td><td>{{ account.lastUsedAtUtc ? (account.lastUsedAtUtc | date:'short') : '—' }}</td></tr></tbody></table></div>
+          <h3>Recherche ciblée des logs</h3>
+          <div class="log-filters">
+            <div><label>Catégorie</label><select [(ngModel)]="logFilters.category"><option value="">Toutes</option><option>CONNECTIVITY</option><option>AUTHENTICATION</option><option>PERMISSIONS</option><option>ERROR</option><option>CONFIGURATION</option><option>METRICS</option><option>SYSTEM</option></select></div>
+            <div><label>Niveau</label><select [(ngModel)]="logFilters.level"><option value="">Tous</option><option>ERROR</option><option>WARN</option><option>INFO</option><option>DEBUG</option></select></div>
+            <div><label>Compte de service</label><select [(ngModel)]="logFilters.serviceAccountId"><option value="">Tous les comptes</option><option *ngFor="let account of selectedTenant.serviceAccounts" [value]="account.id">{{ account.accountName }}</option></select></div>
+            <div><label>Source</label><select [(ngModel)]="logFilters.source"><option value="">Toutes</option><option>MFCMP</option><option>MFILES_AUDIT</option><option>MFILES_SERVER</option></select></div>
+            <div><label>Recherche texte / code erreur</label><input [(ngModel)]="logFilters.search" placeholder="Timeout, authentication, code..."></div>
+            <div class="form-action"><button class="primary" (click)="searchTenantLogs()" [disabled]="logsBusy">Rechercher</button></div>
+          </div>
+          <div class="count">{{ logsTotal }} résultat(s)</div>
+          <div class="empty" *ngIf="!tenantLogs.length && !logsBusy">Aucun log correspondant aux filtres.</div>
+          <div class="table-wrap" *ngIf="tenantLogs.length"><table><thead><tr><th>Date UTC</th><th>Source</th><th>Catégorie</th><th>Niveau</th><th>Compte de service</th><th>Événement / message</th><th>Code</th></tr></thead><tbody><tr *ngFor="let log of tenantLogs"><td>{{ log.occurredAtUtc | date:'short' }}</td><td>{{ log.source }}</td><td>{{ log.category }}</td><td><span class="status" [class.fail]="log.level === 'ERROR'">{{ log.level }}</span></td><td>{{ log.serviceAccount || '—' }}</td><td><strong>{{ log.eventName }}</strong><span class="sub">{{ log.message }}</span></td><td>{{ log.errorCode || '—' }}</td></tr></tbody></table></div>
         </section>
 
         <section class="panel">
@@ -183,6 +204,8 @@ export class AppComponent implements OnInit {
   busy = false; errorMessage = ''; vaults: Vault[] = [];
   dashboard: Dashboard | null = null; incidents: Incident[] = [];
   databaseConfig: DatabaseConfig | null = null; databaseTest: DatabaseTest | null = null; databaseBusy = false;
+  selectedTenant: TenantInfo | null = null; tenantLogs: MonitoringLog[] = []; logsTotal = 0; logsBusy = false;
+  logFilters = { category: '', level: '', serviceAccountId: '', source: '', search: '' };
   newVault = {
     name: '', vaultGuid: '', cloudHost: '', organization: '', environment: 'DEV',
     authenticationMode: 'None', credentialSecretUri: '', authenticationPlugin: '',
@@ -235,6 +258,23 @@ export class AppComponent implements OnInit {
     this.http.get<Incident[]>('/api/monitoring/incidents', { withCredentials: true }).subscribe({
       next: r => this.incidents = r,
       error: () => this.errorMessage = 'Impossible de charger les incidents.'
+    });
+  }
+  openTenant(vault: Vault): void {
+    this.http.get<TenantInfo>(`/api/tenants/by-vault/${vault.id}`, { withCredentials: true }).subscribe({
+      next: tenant => { this.selectedTenant = tenant; this.logFilters = { category: '', level: '', serviceAccountId: '', source: '', search: '' }; this.searchTenantLogs(); },
+      error: e => this.errorMessage = e.error?.message || 'Impossible de charger le tenant de ce coffre.'
+    });
+  }
+  closeTenant(): void { this.selectedTenant = null; this.tenantLogs = []; this.logsTotal = 0; }
+  searchTenantLogs(): void {
+    if (!this.selectedTenant) return;
+    this.logsBusy = true;
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(this.logFilters)) if (value) params.set(key, value);
+    this.http.get<{ total: number; items: MonitoringLog[] }>(`/api/tenants/${this.selectedTenant.id}/logs?${params.toString()}`, { withCredentials: true }).subscribe({
+      next: result => { this.tenantLogs = result.items; this.logsTotal = result.total; this.logsBusy = false; },
+      error: e => { this.errorMessage = e.error?.message || 'La recherche des logs a échoué.'; this.logsBusy = false; }
     });
   }
   addVault(): void {
