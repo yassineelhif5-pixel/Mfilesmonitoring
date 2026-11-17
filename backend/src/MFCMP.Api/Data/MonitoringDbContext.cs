@@ -11,6 +11,9 @@ public sealed class MonitoringDbContext(DbContextOptions<MonitoringDbContext> op
     public DbSet<VaultHealthCheck> VaultHealthChecks => Set<VaultHealthCheck>();
     public DbSet<VaultDailyObjectStatistic> VaultDailyObjectStatistics => Set<VaultDailyObjectStatistic>();
     public DbSet<Incident> Incidents => Set<Incident>();
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<ServiceAccount> ServiceAccounts => Set<ServiceAccount>();
+    public DbSet<MonitoringLog> MonitoringLogs => Set<MonitoringLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -45,6 +48,45 @@ public sealed class MonitoringDbContext(DbContextOptions<MonitoringDbContext> op
             e.HasIndex(x => new { x.VaultId, x.DateUtc }).IsUnique();
             e.HasOne(x => x.Vault).WithMany(x => x.DailyStatistics).HasForeignKey(x => x.VaultId).OnDelete(DeleteBehavior.Cascade);
         });
+
+        builder.Entity<Tenant>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).HasMaxLength(160).IsRequired();
+            e.Property(x => x.Code).HasMaxLength(80).IsRequired();
+            e.HasIndex(x => x.VaultId).IsUnique();
+            e.HasIndex(x => x.Code).IsUnique();
+            e.HasOne(x => x.Vault).WithOne(x => x.Tenant).HasForeignKey<Tenant>(x => x.VaultId).OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<ServiceAccount>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).HasMaxLength(160).IsRequired();
+            e.Property(x => x.AccountName).HasMaxLength(256).IsRequired();
+            e.Property(x => x.MFilesAccountId).HasMaxLength(128);
+            e.Property(x => x.AuthenticationMode).HasMaxLength(24).IsRequired();
+            e.Property(x => x.CredentialSecretUri).HasMaxLength(2048).IsRequired();
+            e.HasIndex(x => new { x.TenantId, x.AccountName }).IsUnique();
+            e.HasOne(x => x.Tenant).WithMany(x => x.ServiceAccounts).HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MonitoringLog>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Source).HasMaxLength(40).IsRequired();
+            e.Property(x => x.Category).HasMaxLength(40).IsRequired();
+            e.Property(x => x.Level).HasMaxLength(16).IsRequired();
+            e.Property(x => x.EventName).HasMaxLength(160).IsRequired();
+            e.Property(x => x.Message).HasMaxLength(2000).IsRequired();
+            e.Property(x => x.ErrorCode).HasMaxLength(128);
+            e.Property(x => x.CorrelationId).HasMaxLength(128);
+            e.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
+            e.HasIndex(x => new { x.TenantId, x.Category, x.Level, x.OccurredAtUtc });
+            e.HasIndex(x => new { x.ServiceAccountId, x.OccurredAtUtc });
+            e.HasOne(x => x.Tenant).WithMany(x => x.Logs).HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Vault).WithMany().HasForeignKey(x => x.VaultId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.ServiceAccount).WithMany(x => x.Logs).HasForeignKey(x => x.ServiceAccountId).OnDelete(DeleteBehavior.SetNull);
+        });
+
         builder.Entity<Incident>(e =>
         {
             e.HasKey(x => x.Id);
