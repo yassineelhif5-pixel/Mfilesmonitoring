@@ -109,6 +109,17 @@ interface Incident {
           <h3>Comptes de service</h3>
           <div class="empty" *ngIf="!selectedTenant.serviceAccounts.length">Aucun compte de service enregistré pour ce tenant.</div>
           <div class="table-wrap" *ngIf="selectedTenant.serviceAccounts.length"><table><thead><tr><th>Nom</th><th>Compte M-Files</th><th>Authentification</th><th>Principal</th><th>Actif</th><th>Dernière utilisation</th></tr></thead><tbody><tr *ngFor="let account of selectedTenant.serviceAccounts"><td>{{ account.name }}</td><td>{{ account.accountName }}</td><td>{{ account.authenticationMode }}</td><td>{{ account.isPrimary ? 'Oui' : 'Non' }}</td><td>{{ account.isEnabled ? 'Oui' : 'Non' }}</td><td>{{ account.lastUsedAtUtc ? (account.lastUsedAtUtc | date:'short') : '—' }}</td></tr></tbody></table></div>
+          <h3>Ajouter un compte de service</h3>
+          <form class="service-account-form" (ngSubmit)="addServiceAccount()">
+            <div><label>Libellé</label><input name="serviceName" [(ngModel)]="newServiceAccount.name" required placeholder="M-Files Monitoring"></div>
+            <div><label>Identifiant du compte M-Files</label><input name="serviceAccountName" [(ngModel)]="newServiceAccount.accountName" required placeholder="svc_mfcmp_monitoring"></div>
+            <div><label>Mode d'authentification</label><select name="serviceAuthMode" [(ngModel)]="newServiceAccount.authenticationMode"><option>Credentials</option><option>Token</option></select></div>
+            <div><label>Azure Key Vault Secret URI</label><input name="serviceSecretUri" [(ngModel)]="newServiceAccount.credentialSecretUri" required placeholder="https://vault.vault.azure.net/secrets/mfiles-monitoring"></div>
+            <div><label>M-Files Account ID (optionnel)</label><input name="mfilesAccountId" [(ngModel)]="newServiceAccount.mFilesAccountId"></div>
+            <div class="form-action"><label><input type="checkbox" name="isPrimary" [(ngModel)]="newServiceAccount.isPrimary"> Compte principal</label></div>
+            <div class="form-action"><button class="primary" type="submit" [disabled]="serviceAccountBusy">Enregistrer le compte</button></div>
+          </form>
+          <p class="muted small">Le mot de passe ou token reste dans Azure Key Vault. Le portail ne reçoit et ne stocke que l'URI du secret.</p>
           <h3>Recherche ciblée des logs</h3>
           <div class="log-filters">
             <div><label>Catégorie</label><select [(ngModel)]="logFilters.category"><option value="">Toutes</option><option>CONNECTIVITY</option><option>AUTHENTICATION</option><option>PERMISSIONS</option><option>ERROR</option><option>CONFIGURATION</option><option>METRICS</option><option>SYSTEM</option></select></div>
@@ -206,6 +217,8 @@ export class AppComponent implements OnInit {
   databaseConfig: DatabaseConfig | null = null; databaseTest: DatabaseTest | null = null; databaseBusy = false;
   selectedTenant: TenantInfo | null = null; tenantLogs: MonitoringLog[] = []; logsTotal = 0; logsBusy = false;
   logFilters = { category: '', level: '', serviceAccountId: '', source: '', search: '' };
+  serviceAccountBusy = false;
+  newServiceAccount = { name: '', accountName: '', mFilesAccountId: '', authenticationMode: 'Credentials', credentialSecretUri: '', isPrimary: true };
   newVault = {
     name: '', vaultGuid: '', cloudHost: '', organization: '', environment: 'DEV',
     authenticationMode: 'None', credentialSecretUri: '', authenticationPlugin: '',
@@ -258,6 +271,19 @@ export class AppComponent implements OnInit {
     this.http.get<Incident[]>('/api/monitoring/incidents', { withCredentials: true }).subscribe({
       next: r => this.incidents = r,
       error: () => this.errorMessage = 'Impossible de charger les incidents.'
+    });
+  }
+  addServiceAccount(): void {
+    if (!this.selectedTenant) return;
+    this.serviceAccountBusy = true;
+    this.http.post(`/api/tenants/${this.selectedTenant.id}/service-accounts`, this.newServiceAccount, { headers: this.headers(), withCredentials: true }).subscribe({
+      next: () => {
+        const vault = this.vaults.find(v => v.id === this.selectedTenant?.vaultId);
+        if (vault) this.openTenant(vault);
+        this.newServiceAccount = { name: '', accountName: '', mFilesAccountId: '', authenticationMode: 'Credentials', credentialSecretUri: '', isPrimary: true };
+        this.serviceAccountBusy = false;
+      },
+      error: e => { this.errorMessage = e.error?.message || 'Impossible d’enregistrer le compte de service.'; this.serviceAccountBusy = false; }
     });
   }
   openTenant(vault: Vault): void {
