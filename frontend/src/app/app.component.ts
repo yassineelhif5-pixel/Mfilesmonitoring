@@ -127,6 +127,8 @@ interface Incident {
             <div><label>Compte de service</label><select [(ngModel)]="logFilters.serviceAccountId"><option value="">Tous les comptes</option><option *ngFor="let account of selectedTenant.serviceAccounts" [value]="account.id">{{ account.accountName }}</option></select></div>
             <div><label>Source</label><select [(ngModel)]="logFilters.source"><option value="">Toutes</option><option>MFCMP</option><option>MFILES_AUDIT</option><option>MFILES_SERVER</option></select></div>
             <div><label>Recherche texte / code erreur</label><input [(ngModel)]="logFilters.search" placeholder="Timeout, authentication, code..."></div>
+            <div><label>Du (UTC)</label><input type="date" [(ngModel)]="logFilters.fromDate"></div>
+            <div><label>Au (UTC)</label><input type="date" [(ngModel)]="logFilters.toDate"></div>
             <div class="form-action"><button class="primary" (click)="searchTenantLogs()" [disabled]="logsBusy">Rechercher</button></div>
           </div>
           <div class="count">{{ logsTotal }} résultat(s)</div>
@@ -216,7 +218,7 @@ export class AppComponent implements OnInit {
   dashboard: Dashboard | null = null; incidents: Incident[] = [];
   databaseConfig: DatabaseConfig | null = null; databaseTest: DatabaseTest | null = null; databaseBusy = false;
   selectedTenant: TenantInfo | null = null; tenantLogs: MonitoringLog[] = []; logsTotal = 0; logsBusy = false;
-  logFilters = { category: '', level: '', serviceAccountId: '', source: '', search: '' };
+  logFilters = { category: '', level: '', serviceAccountId: '', source: '', search: '', fromDate: '', toDate: '' };
   serviceAccountBusy = false;
   newServiceAccount = { name: '', accountName: '', mFilesAccountId: '', authenticationMode: 'Credentials', credentialSecretUri: '', isPrimary: true };
   newVault = {
@@ -288,7 +290,7 @@ export class AppComponent implements OnInit {
   }
   openTenant(vault: Vault): void {
     this.http.get<TenantInfo>(`/api/tenants/by-vault/${vault.id}`, { withCredentials: true }).subscribe({
-      next: tenant => { this.selectedTenant = tenant; this.logFilters = { category: '', level: '', serviceAccountId: '', source: '', search: '' }; this.searchTenantLogs(); },
+      next: tenant => { this.selectedTenant = tenant; this.logFilters = { category: '', level: '', serviceAccountId: '', source: '', search: '', fromDate: '', toDate: '' }; this.searchTenantLogs(); },
       error: e => this.errorMessage = e.error?.message || 'Impossible de charger le tenant de ce coffre.'
     });
   }
@@ -297,7 +299,7 @@ export class AppComponent implements OnInit {
     if (!this.selectedTenant) return;
     this.logsBusy = true;
     const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(this.logFilters)) if (value) params.set(key, value);
+    for (const [key, value] of Object.entries(this.logFilters)) {\n      if (!value) continue;\n      if (key === 'fromDate') params.set('fromUtc', new Date(value + 'T00:00:00Z').toISOString());\n      else if (key === 'toDate') params.set('toUtc', new Date(value + 'T23:59:59.999Z').toISOString());\n      else params.set(key, value);\n    }
     this.http.get<{ total: number; items: MonitoringLog[] }>(`/api/tenants/${this.selectedTenant.id}/logs?${params.toString()}`, { withCredentials: true }).subscribe({
       next: result => { this.tenantLogs = result.items; this.logsTotal = result.total; this.logsBusy = false; },
       error: e => { this.errorMessage = e.error?.message || 'La recherche des logs a échoué.'; this.logsBusy = false; }
