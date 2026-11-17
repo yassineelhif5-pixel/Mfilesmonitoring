@@ -78,6 +78,11 @@ public sealed class VaultsController(MonitoringDbContext db, IVaultStatusProbe s
             MetricsCollectionIntervalMinutes = Math.Clamp(request.MetricsCollectionIntervalMinutes, 5, 1440)
         };
         db.Vaults.Add(vault);
+        db.Tenants.Add(new Tenant
+        {
+            Vault = vault, Name = vault.Name,
+            Code = $"VAULT-{vault.Id:N}".ToUpperInvariant(), IsActive = true
+        });
         await db.SaveChangesAsync(ct);
         return Ok(new { vault.Id, vault.Name, vault.VaultGuid });
     }
