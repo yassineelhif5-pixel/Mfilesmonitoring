@@ -33,8 +33,10 @@ public sealed class TenantsController(MonitoringDbContext db) : ControllerBase
         if (tenant is null) return NotFound(new { message = "Tenant not found." });
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.AccountName))
             return BadRequest(new { message = "Service account name and account identifier are required." });
+        if (!new[] { "Credentials", "Token" }.Contains(request.AuthenticationMode, StringComparer.OrdinalIgnoreCase))
+            return BadRequest(new { message = "AuthenticationMode must be Credentials or Token." });
         if (!Uri.TryCreate(request.CredentialSecretUri, UriKind.Absolute, out var secretUri) ||
-            secretUri.Scheme != Uri.UriSchemeHttps || !secretUri.Host.EndsWith(".vault.azure.net", StringComparison.OrdinalIgnoreCase) ||
+            secretUri.Scheme != Uri.UriSchemeHttps || !(secretUri.Host.EndsWith(".vault.azure.net", StringComparison.OrdinalIgnoreCase) || secretUri.Host.EndsWith(".vault.usgovcloudapi.net", StringComparison.OrdinalIgnoreCase) || secretUri.Host.EndsWith(".vault.azure.cn", StringComparison.OrdinalIgnoreCase)) ||
             !secretUri.AbsolutePath.Contains("/secrets/", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "Provide an HTTPS Azure Key Vault secret URI. Never send the password or token to this API." });
         if (await db.ServiceAccounts.AnyAsync(a => a.TenantId == tenantId && a.AccountName == request.AccountName, ct))
